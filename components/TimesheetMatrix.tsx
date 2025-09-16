@@ -114,7 +114,7 @@ export default function TimesheetMatrix() {
 
   const generateWeekData = (startDate: Date): WeekData => {
     const days: DayData[] = [];
-    let weekTotal = 0;
+    const weekTotal = 0;
 
     for (let i = 0; i < 7; i++) {
       const date = new Date(startDate);
@@ -242,47 +242,6 @@ export default function TimesheetMatrix() {
       if (currentWeek) {
         loadWeekData(currentWeek);
       }
-    }
-  };
-
-  const updateTimeEntry = async (date: string, entryId: string, updatedEntry: Partial<TimeEntry>) => {
-    try {
-      const response = await fetch(`/api/entries/${entryId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updatedEntry),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update entry');
-      }
-
-      const updatedEntryFromDB: TimeEntry = await response.json();
-      
-      if (currentWeek) {
-        const updatedWeek = { ...currentWeek };
-        const dayIndex = updatedWeek.days.findIndex(day => day.date === date);
-        
-        if (dayIndex !== -1) {
-          const entryIndex = updatedWeek.days[dayIndex].entries.findIndex(entry => entry.id === entryId);
-          
-          if (entryIndex !== -1) {
-            const oldHours = updatedWeek.days[dayIndex].entries[entryIndex].hours;
-            const newHours = updatedEntryFromDB.hours;
-            
-            updatedWeek.days[dayIndex].entries[entryIndex] = updatedEntryFromDB;
-            
-            updatedWeek.days[dayIndex].totalHours = updatedWeek.days[dayIndex].totalHours - oldHours + newHours;
-            updatedWeek.weekTotal = updatedWeek.weekTotal - oldHours + newHours;
-          }
-        }
-
-        setCurrentWeek(updatedWeek);
-      }
-    } catch (error) {
-      console.error('Error updating entry:', error);
     }
   };
 

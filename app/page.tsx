@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import TimesheetMatrix from '@/components/TimesheetMatrix';
 
 export default function Home() {

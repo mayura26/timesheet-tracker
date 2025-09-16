@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MonthlyReport, Project, MonthlyStatement, TaskEntry } from '@/lib/schema';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -22,22 +22,6 @@ export default function ReportsPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState('monthly');
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  useEffect(() => {
-    if (projects.length > 0) {
-      if (activeTab === 'monthly') {
-      loadMonthlyReport();
-      } else if (activeTab === 'weekly') {
-        loadWeeklySummary();
-      } else if (activeTab === 'statement') {
-        loadMonthlyStatement();
-      }
-    }
-  }, [selectedMonth, selectedYear, projects, activeTab]);
-
   const loadProjects = async () => {
     try {
       const response = await fetch('/api/projects?activeOnly=true');
@@ -48,7 +32,7 @@ export default function ReportsPage() {
     }
   };
 
-  const loadMonthlyReport = async () => {
+  const loadMonthlyReport = useCallback(async () => {
     setLoading(true);
     try {
       const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
@@ -95,9 +79,9 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedYear, selectedMonth]);
 
-  const loadWeeklySummary = async () => {
+  const loadWeeklySummary = useCallback(async () => {
     try {
       // Get current week
       const today = new Date();
@@ -146,9 +130,9 @@ export default function ReportsPage() {
     } catch (error) {
       console.error('Error loading weekly summary:', error);
     }
-  };
+  }, []);
 
-  const loadMonthlyStatement = async () => {
+  const loadMonthlyStatement = useCallback(async () => {
     setLoading(true);
     try {
       const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
@@ -206,7 +190,23 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  useEffect(() => {
+    if (projects.length > 0) {
+      if (activeTab === 'monthly') {
+        loadMonthlyReport();
+      } else if (activeTab === 'weekly') {
+        loadWeeklySummary();
+      } else if (activeTab === 'statement') {
+        loadMonthlyStatement();
+      }
+    }
+  }, [selectedMonth, selectedYear, projects, activeTab, loadMonthlyReport, loadWeeklySummary, loadMonthlyStatement]);
 
   const getProjectColor = (projectName: string) => {
     const project = projects.find(p => p.name === projectName);
@@ -344,7 +344,6 @@ export default function ReportsPage() {
                         .sort(([,a], [,b]) => b - a)
                         .map(([projectName, hours]) => {
                           const percentage = (hours / report.totalHours) * 100;
-                          const project = projects.find(p => p.name === projectName);
                           
                           return (
                             <div key={projectName} className="space-y-2">
