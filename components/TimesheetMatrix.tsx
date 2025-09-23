@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { TimeEntry, DayData, WeekData, Project } from '@/lib/schema';
+import { toast } from 'sonner';
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -13,26 +14,108 @@ interface TaskRow {
   totalHours: number;
 }
 
+// Skeleton Components
+function SkeletonBox({ className = "" }: { className?: string }) {
+  return (
+    <div className={`animate-pulse bg-muted rounded ${className}`}></div>
+  );
+}
+
+function TimesheetSkeleton() {
+  return (
+    <div className="space-y-6">
+      {/* Week Navigation Skeleton */}
+      <div className="flex items-center justify-between">
+        <SkeletonBox className="h-10 w-32" />
+        <SkeletonBox className="h-8 w-48" />
+        <SkeletonBox className="h-10 w-32" />
+      </div>
+
+      {/* Timesheet Matrix Skeleton */}
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
+        <div className="grid grid-cols-8 gap-0">
+          {/* Header Row */}
+          <div className="bg-muted p-4 border-r border-border">
+            <div className="flex items-center justify-between">
+              <SkeletonBox className="h-4 w-12" />
+              <SkeletonBox className="h-6 w-20" />
+            </div>
+          </div>
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} className="bg-muted p-4 border-r border-border last:border-r-0">
+              <SkeletonBox className="h-4 w-16 mx-auto mb-1" />
+              <SkeletonBox className="h-3 w-12 mx-auto" />
+            </div>
+          ))}
+          
+          {/* Task Rows Skeleton */}
+          {Array.from({ length: 3 }).map((_, taskIndex) => (
+            <div key={taskIndex} className="contents">
+              {/* Task Info Skeleton */}
+              <div className="bg-background p-4 border-r border-border border-t border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <SkeletonBox className="w-3 h-3 rounded-full" />
+                  <SkeletonBox className="h-4 w-20" />
+                </div>
+                <SkeletonBox className="h-3 w-32 mb-2" />
+                <SkeletonBox className="h-3 w-16" />
+              </div>
+              
+              {/* Hours Inputs Skeleton for each day */}
+              {Array.from({ length: 7 }).map((_, dayIndex) => (
+                <div key={`${taskIndex}-${dayIndex}`} className="bg-background p-2 border-r border-border border-t border-border last:border-r-0">
+                  <SkeletonBox className="h-8 w-full" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        
+        {/* Week Total Skeleton */}
+        <div className="bg-primary/10 p-4 border-t border-border">
+          <div className="flex justify-between items-center">
+            <SkeletonBox className="h-6 w-20" />
+            <SkeletonBox className="h-8 w-24" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TimesheetMatrix() {
   const [currentWeek, setCurrentWeek] = useState<WeekData | null>(null);
   const [taskRows, setTaskRows] = useState<TaskRow[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [recentDescriptions, setRecentDescriptions] = useState<string[]>([]);
   const [showAddTask, setShowAddTask] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingWeek, setIsLoadingWeek] = useState(false);
 
   // Initialize current week and load projects
   useEffect(() => {
-    const today = new Date();
-    const startOfWeek = new Date(today);
-    const day = today.getDay();
-    const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-    startOfWeek.setDate(diff);
+    const initializeData = async () => {
+      setIsLoading(true);
+      const today = new Date();
+      const startOfWeek = new Date(today);
+      const day = today.getDay();
+      const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
+      startOfWeek.setDate(diff);
+      
+      const weekData = generateWeekData(startOfWeek);
+      setCurrentWeek(weekData);
+      
+      // Load all data in parallel
+      await Promise.all([
+        loadWeekData(weekData),
+        loadProjects(),
+        loadRecentDescriptions()
+      ]);
+      
+      setIsLoading(false);
+    };
     
-    const weekData = generateWeekData(startOfWeek);
-    setCurrentWeek(weekData);
-    loadWeekData(weekData);
-    loadProjects();
-    loadRecentDescriptions();
+    initializeData();
   }, []);
 
   const loadProjects = async () => {
@@ -143,7 +226,7 @@ export default function TimesheetMatrix() {
       
       // Check if task already exists
       if (taskRows.some(task => task.id === taskKey)) {
-        alert('This task already exists for this week');
+        toast.error('This task already exists for this week');
         return;
       }
 
@@ -164,8 +247,10 @@ export default function TimesheetMatrix() {
 
       setShowAddTask(false);
       loadRecentDescriptions();
+      toast.success('Task added successfully');
     } catch (error) {
       console.error('Error adding task:', error);
+      toast.error('Failed to add task. Please try again.');
     }
   };
 
@@ -220,7 +305,11 @@ export default function TimesheetMatrix() {
           await fetch(`/api/entries/${existingEntry.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hours })
+            body: JSON.stringify({ 
+              project: task.project,
+              description: task.description,
+              hours 
+            })
           });
         } else {
           // Create new entry
@@ -236,8 +325,17 @@ export default function TimesheetMatrix() {
           });
         }
       }
+      
+      // Show success feedback for hour updates
+      if (hours > 0) {
+        toast.success('Hours updated', {
+          description: `${hours}h logged for ${task.description}`,
+          duration: 2000
+        });
+      }
     } catch (error) {
       console.error('Error updating task hours:', error);
+      toast.error('Failed to update hours. Please try again.');
       // Reload data on error to sync with database
       if (currentWeek) {
         loadWeekData(currentWeek);
@@ -245,16 +343,160 @@ export default function TimesheetMatrix() {
     }
   };
 
-  const navigateWeek = (direction: 'prev' | 'next') => {
+  const deleteTask = async (taskId: string) => {
+    try {
+      const task = taskRows.find(t => t.id === taskId);
+      if (!task) return;
+
+      // Show confirmation toast
+      toast.loading('Deleting task...', {
+        id: 'delete-task',
+        description: `Removing "${task.description}" and all its time entries`
+      });
+
+      // Get all entries for this task in the current week
+      if (!currentWeek) return;
+      
+      const startDate = currentWeek.weekStart;
+      const endDate = new Date(new Date(startDate).getTime() + 6 * 24 * 60 * 60 * 1000)
+        .toISOString().split('T')[0];
+      
+      const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
+      const entries = await response.json();
+      
+      // Find all entries for this task
+      const taskEntries = entries.filter((e: TimeEntry) => 
+        e.project === task.project && e.description === task.description
+      );
+
+      // Delete all entries for this task
+      for (const entry of taskEntries) {
+        await fetch(`/api/entries/${entry.id}`, { method: 'DELETE' });
+      }
+
+      // Remove task from local state
+      setTaskRows(taskRows.filter(t => t.id !== taskId));
+      
+      toast.success('Task deleted successfully', {
+        id: 'delete-task',
+        description: `"${task.description}" and all its time entries have been removed`
+      });
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast.error('Failed to delete task. Please try again.', {
+        id: 'delete-task'
+      });
+      // Reload data on error to sync with database
+      if (currentWeek) {
+        loadWeekData(currentWeek);
+      }
+    }
+  };
+
+  const copyFromLastWeek = async () => {
     if (!currentWeek) return;
 
+    try {
+      // Calculate previous week dates
+      const currentStart = new Date(currentWeek.weekStart);
+      const lastWeekStart = new Date(currentStart);
+      lastWeekStart.setDate(currentStart.getDate() - 7);
+      
+      const lastWeekEnd = new Date(lastWeekStart);
+      lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+      
+      // Get entries from last week
+      const response = await fetch(`/api/entries?startDate=${lastWeekStart.toISOString().split('T')[0]}&endDate=${lastWeekEnd.toISOString().split('T')[0]}`);
+      const lastWeekEntries: TimeEntry[] = await response.json();
+      
+      if (lastWeekEntries.length === 0) {
+        toast.info('No tasks found in the previous week to copy');
+        return;
+      }
+
+      // Show loading toast
+      toast.loading('Copying tasks from last week...', {
+        id: 'copy-tasks',
+        description: `Found ${lastWeekEntries.length} entries, extracting unique tasks`
+      });
+
+      // Group entries by task (project + description combination) to get unique tasks
+      const taskMap = new Map<string, { project: string; description: string }>();
+      
+      lastWeekEntries.forEach(entry => {
+        const taskKey = `${entry.project}|${entry.description}`;
+        
+        if (!taskMap.has(taskKey)) {
+          taskMap.set(taskKey, {
+            project: entry.project,
+            description: entry.description
+          });
+        }
+      });
+
+      // Create new task rows (without hours) for current week
+      const newTaskRows: TaskRow[] = [];
+      
+      for (const [taskKey, taskData] of taskMap) {
+        // Check if task already exists in current week
+        const existingTask = taskRows.find(t => t.id === taskKey);
+        if (existingTask) {
+          continue; // Skip if task already exists
+        }
+
+        // Create new task row without hours
+        newTaskRows.push({
+          id: taskKey,
+          project: taskData.project,
+          description: taskData.description,
+          hours: {},
+          totalHours: 0
+        });
+      }
+
+      // Add new tasks to the current task rows
+      if (newTaskRows.length > 0) {
+        const updatedTaskRows = [...taskRows, ...newTaskRows].sort((a, b) => {
+          if (a.project !== b.project) {
+            return a.project.localeCompare(b.project);
+          }
+          return a.description.localeCompare(b.description);
+        });
+        
+        setTaskRows(updatedTaskRows);
+        
+        toast.success('Tasks copied successfully!', {
+          id: 'copy-tasks',
+          description: `Added ${newTaskRows.length} tasks from last week (without hours)`
+        });
+      } else {
+        toast.info('No new tasks to copy', {
+          id: 'copy-tasks',
+          description: 'All tasks from last week already exist in this week'
+        });
+      }
+    } catch (error) {
+      console.error('Error copying from last week:', error);
+      toast.error('Failed to copy tasks from last week. Please try again.', {
+        id: 'copy-tasks'
+      });
+    }
+  };
+
+  const navigateWeek = async (direction: 'prev' | 'next') => {
+    if (!currentWeek || isLoadingWeek) return;
+
+    setIsLoadingWeek(true);
     const currentStart = new Date(currentWeek.weekStart);
     const newStart = new Date(currentStart);
     newStart.setDate(currentStart.getDate() + (direction === 'next' ? 7 : -7));
     
     const newWeekData = generateWeekData(newStart);
     setCurrentWeek(newWeekData);
-    loadWeekData(newWeekData);
+    await loadWeekData(newWeekData);
+    setIsLoadingWeek(false);
+    
+    toast.success(`Switched to ${direction === 'next' ? 'next' : 'previous'} week`);
   };
 
   const formatDate = (dateString: string) => {
@@ -275,6 +517,10 @@ export default function TimesheetMatrix() {
     return project?.color || '#3b82f6';
   };
 
+  if (isLoading) {
+    return <TimesheetSkeleton />;
+  }
+
   if (!currentWeek) {
     return <div className="flex justify-center items-center h-64">Loading...</div>;
   }
@@ -287,9 +533,17 @@ export default function TimesheetMatrix() {
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigateWeek('prev')}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          disabled={isLoadingWeek}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          ← Previous Week
+          {isLoadingWeek ? (
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+              Loading...
+            </div>
+          ) : (
+            '← Previous Week'
+          )}
         </button>
         
         <h2 className="text-xl font-semibold">
@@ -298,9 +552,17 @@ export default function TimesheetMatrix() {
         
         <button
           onClick={() => navigateWeek('next')}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          disabled={isLoadingWeek}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Next Week →
+          {isLoadingWeek ? (
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+              Loading...
+            </div>
+          ) : (
+            'Next Week →'
+          )}
         </button>
       </div>
 
@@ -311,12 +573,25 @@ export default function TimesheetMatrix() {
           <div className="bg-muted p-4 font-semibold border-r border-border">
             <div className="flex items-center justify-between">
               <span>Tasks</span>
-              <button
-                onClick={() => setShowAddTask(true)}
-                className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90"
-              >
-                + Add Task
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={copyFromLastWeek}
+                  className="text-xs px-2 py-1 border border-border rounded hover:bg-muted transition-colors flex items-center gap-1"
+                  title="Copy tasks from last week"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  Copy
+                </button>
+                <button
+                  onClick={() => setShowAddTask(true)}
+                  className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                >
+                  + Add Task
+                </button>
+              </div>
             </div>
           </div>
           {currentWeek.days.map((day) => (
@@ -331,12 +606,23 @@ export default function TimesheetMatrix() {
             <div key={task.id} className="contents">
               {/* Task Info */}
               <div className="bg-background p-4 border-r border-border border-t border-border">
-                <div className="flex items-center gap-2 mb-1">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: getProjectColor(task.project) }}
-                  ></div>
-                  <span className="font-medium text-sm">{task.project}</span>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: getProjectColor(task.project) }}
+                    ></div>
+                    <span className="font-medium text-sm">{task.project}</span>
+                  </div>
+                  <button
+                    onClick={() => deleteTask(task.id)}
+                    className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-sm hover:bg-muted"
+                    title="Delete task"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                  </button>
                 </div>
                 <div className="text-xs text-muted-foreground mb-2">{task.description}</div>
                 <div className="text-xs font-medium text-primary">Total: {task.totalHours.toFixed(1)}h</div>
@@ -367,12 +653,24 @@ export default function TimesheetMatrix() {
           {taskRows.length === 0 && (
             <div className="col-span-8 bg-background p-8 text-center border-t border-border">
               <p className="text-muted-foreground mb-4">No tasks added for this week</p>
-              <button
-                onClick={() => setShowAddTask(true)}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-              >
-                Add Your First Task
-              </button>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowAddTask(true)}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                >
+                  Add Your First Task
+                </button>
+                <button
+                  onClick={copyFromLastWeek}
+                  className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors flex items-center gap-2"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  Copy from Last Week
+                </button>
+              </div>
             </div>
           )}
         </div>
