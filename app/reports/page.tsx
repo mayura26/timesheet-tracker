@@ -704,7 +704,7 @@ export default function ReportsPage() {
                             <div className="text-right">Hours</div>
                             <div className="text-right">Amount</div>
                           </div>
-                          {getSummaryTasks().map((task, index) => {
+                          {getSummaryTasks().map((task) => {
                             const taskKey = `${task.project}|${task.description}`;
                             const isExpanded = expandedTasks.has(taskKey);
                             
