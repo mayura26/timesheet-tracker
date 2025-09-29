@@ -36,7 +36,7 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
-      const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+      const endDate = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries = await response.json();
@@ -136,7 +136,7 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
-      const endDate = new Date(selectedYear, selectedMonth, 0).toISOString().split('T')[0];
+      const endDate = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries = await response.json();
@@ -329,7 +329,7 @@ export default function ReportsPage() {
                   <div className="bg-card rounded-lg border border-border p-6">
                     <h3 className="text-sm font-medium text-muted-foreground">Average Daily</h3>
                     <p className="text-3xl font-bold text-foreground mt-2">
-                      {(report.totalHours / (Math.ceil(new Date(selectedYear, selectedMonth, 0).getDate() / 7) * 5)).toFixed(1)}h
+                      {(report.totalHours / (Math.ceil(new Date(selectedYear, selectedMonth + 1, 0).getDate() / 7) * 5)).toFixed(1)}h
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">5-day work week</p>
                   </div>
@@ -387,11 +387,13 @@ export default function ReportsPage() {
                   <h3 className="text-lg font-semibold text-foreground mb-4">Daily Breakdown</h3>
                   {Object.keys(report.dailyBreakdown).length > 0 ? (
                     <div className="grid grid-cols-7 gap-2">
-                      {Array.from({ length: new Date(selectedYear, selectedMonth, 0).getDate() }, (_, i) => {
+                      {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
                         const day = i + 1;
                         const date = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                         const hours = report.dailyBreakdown[date] || 0;
-                        const isToday = new Date().toDateString() === new Date(selectedYear, selectedMonth - 1, day).toDateString();
+                        const today = new Date();
+                        const todayString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                        const isToday = todayString === date;
                         
                         return (
                           <div
@@ -520,7 +522,9 @@ export default function ReportsPage() {
                       date.setDate(date.getDate() + i);
                       const dateString = date.toISOString().split('T')[0];
                       const hours = weeklySummary.dailyBreakdown[dateString] || 0;
-                      const isToday = new Date().toDateString() === date.toDateString();
+                      const today = new Date();
+                      const todayString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                      const isToday = todayString === dateString;
                       
                       return (
                         <div
