@@ -97,10 +97,11 @@ export default function TimesheetMatrix() {
     const initializeData = async () => {
       setIsLoading(true);
       const today = new Date();
-      const startOfWeek = new Date(today);
-      const day = today.getDay();
-      const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-      startOfWeek.setDate(diff);
+      const dayOfWeek = today.getDay();
+      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Monday is day 1
+      
+      // Calculate start of week without using setDate to avoid timezone issues
+      const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysToMonday);
       
       const weekData = generateWeekData(startOfWeek);
       setCurrentWeek(weekData);
@@ -133,8 +134,9 @@ export default function TimesheetMatrix() {
       // Get descriptions from the last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const startDate = thirtyDaysAgo.toISOString().split('T')[0];
-      const endDate = new Date().toISOString().split('T')[0];
+      const startDate = `${thirtyDaysAgo.getFullYear()}-${(thirtyDaysAgo.getMonth() + 1).toString().padStart(2, '0')}-${thirtyDaysAgo.getDate().toString().padStart(2, '0')}`;
+      const today = new Date();
+      const endDate = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries = await response.json();
@@ -153,8 +155,10 @@ export default function TimesheetMatrix() {
   const loadWeekData = async (weekData: WeekData) => {
     try {
       const startDate = weekData.weekStart;
-      const endDate = new Date(new Date(startDate).getTime() + 6 * 24 * 60 * 60 * 1000)
-        .toISOString().split('T')[0];
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(startDateObj);
+      endDateObj.setDate(startDateObj.getDate() + 6);
+      const endDate = `${endDateObj.getFullYear()}-${(endDateObj.getMonth() + 1).toString().padStart(2, '0')}-${endDateObj.getDate().toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries: TimeEntry[] = await response.json();
@@ -200,9 +204,16 @@ export default function TimesheetMatrix() {
     const weekTotal = 0;
 
     for (let i = 0; i < 7; i++) {
-      const date = new Date(startDate);
-      date.setDate(startDate.getDate() + i);
-      const dateString = date.toISOString().split('T')[0];
+      // Create the actual date for this day of the week using constructor to avoid timezone issues
+      const actualDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + i);
+      
+      // Use the actual date components
+      const year = actualDate.getFullYear();
+      const month = actualDate.getMonth() + 1; // getMonth() returns 0-11, we need 1-12
+      const day = actualDate.getDate();
+      
+      const dateString = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+      
       
       const dayData: DayData = {
         date: dateString,
@@ -214,7 +225,7 @@ export default function TimesheetMatrix() {
     }
 
     return {
-      weekStart: startDate.toISOString().split('T')[0],
+      weekStart: `${startDate.getFullYear()}-${(startDate.getMonth() + 1).toString().padStart(2, '0')}-${startDate.getDate().toString().padStart(2, '0')}`,
       days,
       weekTotal
     };
@@ -358,8 +369,10 @@ export default function TimesheetMatrix() {
       if (!currentWeek) return;
       
       const startDate = currentWeek.weekStart;
-      const endDate = new Date(new Date(startDate).getTime() + 6 * 24 * 60 * 60 * 1000)
-        .toISOString().split('T')[0];
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(startDateObj);
+      endDateObj.setDate(startDateObj.getDate() + 6);
+      const endDate = `${endDateObj.getFullYear()}-${(endDateObj.getMonth() + 1).toString().padStart(2, '0')}-${endDateObj.getDate().toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries = await response.json();
@@ -406,7 +419,9 @@ export default function TimesheetMatrix() {
       lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
       
       // Get entries from last week
-      const response = await fetch(`/api/entries?startDate=${lastWeekStart.toISOString().split('T')[0]}&endDate=${lastWeekEnd.toISOString().split('T')[0]}`);
+      const lastWeekStartStr = `${lastWeekStart.getFullYear()}-${(lastWeekStart.getMonth() + 1).toString().padStart(2, '0')}-${lastWeekStart.getDate().toString().padStart(2, '0')}`;
+      const lastWeekEndStr = `${lastWeekEnd.getFullYear()}-${(lastWeekEnd.getMonth() + 1).toString().padStart(2, '0')}-${lastWeekEnd.getDate().toString().padStart(2, '0')}`;
+      const response = await fetch(`/api/entries?startDate=${lastWeekStartStr}&endDate=${lastWeekEndStr}`);
       const lastWeekEntries: TimeEntry[] = await response.json();
       
       if (lastWeekEntries.length === 0) {
@@ -500,7 +515,9 @@ export default function TimesheetMatrix() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse the date string directly to avoid timezone conversion
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-based in Date constructor
     return date.toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric' 
@@ -508,7 +525,9 @@ export default function TimesheetMatrix() {
   };
 
   const getDayName = (dateString: string) => {
-    const date = new Date(dateString);
+    // Parse the date string directly to avoid timezone conversion
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-based in Date constructor
     return DAYS_OF_WEEK[date.getDay() === 0 ? 6 : date.getDay() - 1];
   };
 

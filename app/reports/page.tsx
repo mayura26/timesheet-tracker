@@ -21,6 +21,8 @@ export default function ReportsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState('monthly');
+  const [isSummaryView, setIsSummaryView] = useState(false);
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
   const loadProjects = async () => {
     try {
@@ -36,7 +38,8 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
-      const endDate = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
+      const lastDayOfMonth = getDaysInMonth(selectedYear, selectedMonth);
+      const endDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${lastDayOfMonth.toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries = await response.json();
@@ -61,6 +64,8 @@ export default function ReportsPage() {
 
         totalHours += entry.hours;
       });
+
+
 
       const monthNames = [
         'January', 'February', 'March', 'April', 'May', 'June',
@@ -136,7 +141,8 @@ export default function ReportsPage() {
     setLoading(true);
     try {
       const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
-      const endDate = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
+      const lastDayOfMonth = getDaysInMonth(selectedYear, selectedMonth);
+      const endDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${lastDayOfMonth.toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries = await response.json();
@@ -241,6 +247,57 @@ export default function ReportsPage() {
     }).format(hours * rate);
   };
 
+  // Create summary view of tasks grouped by project + description
+  const getSummaryTasks = () => {
+    if (!monthlyStatement) return [];
+    
+    const taskMap = new Map<string, { 
+      project: string; 
+      description: string; 
+      totalHours: number; 
+      taskCount: number;
+      entries: TaskEntry[];
+    }>();
+    
+    monthlyStatement.tasks.forEach(task => {
+      const key = `${task.project}|${task.description}`;
+      if (taskMap.has(key)) {
+        const existing = taskMap.get(key)!;
+        existing.totalHours += task.hours;
+        existing.taskCount += 1;
+        existing.entries.push(task);
+      } else {
+        taskMap.set(key, {
+          project: task.project,
+          description: task.description,
+          totalHours: task.hours,
+          taskCount: 1,
+          entries: [task]
+        });
+      }
+    });
+    
+    return Array.from(taskMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+  };
+
+  // Toggle expanded state for a task
+  const toggleTaskExpansion = (taskKey: string) => {
+    setExpandedTasks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskKey)) {
+        newSet.delete(taskKey);
+      } else {
+        newSet.add(taskKey);
+      }
+      return newSet;
+    });
+  };
+
+  // Get number of days in a month (month is 1-based)
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month, 0).getDate();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -329,7 +386,7 @@ export default function ReportsPage() {
                   <div className="bg-card rounded-lg border border-border p-6">
                     <h3 className="text-sm font-medium text-muted-foreground">Average Daily</h3>
                     <p className="text-3xl font-bold text-foreground mt-2">
-                      {(report.totalHours / (Math.ceil(new Date(selectedYear, selectedMonth + 1, 0).getDate() / 7) * 5)).toFixed(1)}h
+                      {(report.totalHours / (Math.ceil(getDaysInMonth(selectedYear, selectedMonth) / 7) * 5)).toFixed(1)}h
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">5-day work week</p>
                   </div>
@@ -387,10 +444,12 @@ export default function ReportsPage() {
                   <h3 className="text-lg font-semibold text-foreground mb-4">Daily Breakdown</h3>
                   {Object.keys(report.dailyBreakdown).length > 0 ? (
                     <div className="grid grid-cols-7 gap-2">
-                      {Array.from({ length: new Date(selectedYear, selectedMonth + 1, 0).getDate() }, (_, i) => {
+                      {Array.from({ length: getDaysInMonth(selectedYear, selectedMonth) }, (_, i) => {
                         const day = i + 1;
                         const date = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                         const hours = report.dailyBreakdown[date] || 0;
+                        
+                        
                         const today = new Date();
                         const todayString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
                         const isToday = todayString === date;
@@ -615,49 +674,172 @@ export default function ReportsPage() {
 
                 {/* Task Line Items */}
             <div className="bg-card rounded-lg border border-border p-6">
-                  <h3 className="text-lg font-semibold text-foreground mb-4">Task Details</h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-foreground">Task Details</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Detailed</span>
+                      <button
+                        onClick={() => setIsSummaryView(!isSummaryView)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          isSummaryView ? 'bg-primary' : 'bg-muted'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            isSummaryView ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <span className="text-sm text-muted-foreground">Summary</span>
+                    </div>
+                  </div>
                   {monthlyStatement.tasks.length > 0 ? (
                     <div className="space-y-2">
-                      <div className="grid grid-cols-5 gap-4 py-2 px-4 bg-muted/50 rounded-md font-medium text-sm text-muted-foreground">
-                        <div>Date</div>
-                        <div>Project</div>
-                        <div>Description</div>
-                        <div className="text-right">Hours</div>
-                        <div className="text-right">Amount</div>
-                      </div>
-                      {monthlyStatement.tasks.map((task) => (
-                        <div key={task.id} className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-border last:border-b-0">
-                          <div className="text-sm text-foreground">
-                            {new Date(task.date).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric' 
-                            })}
+                      {isSummaryView ? (
+                        // Summary View
+                        <>
+                          <div className="grid grid-cols-4 gap-4 py-2 px-4 bg-muted/50 rounded-md font-medium text-sm text-muted-foreground">
+                            <div>Project</div>
+                            <div>Description</div>
+                            <div className="text-right">Hours</div>
+                            <div className="text-right">Amount</div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: getProjectColor(task.project) }}
-                            ></div>
-                            <span className="text-sm text-foreground">{task.project}</span>
+                          {getSummaryTasks().map((task, index) => {
+                            const taskKey = `${task.project}|${task.description}`;
+                            const isExpanded = expandedTasks.has(taskKey);
+                            
+                            return (
+                              <div key={taskKey}>
+                                <div 
+                                  className="grid grid-cols-4 gap-4 py-3 px-4 border-b border-border last:border-b-0 cursor-pointer hover:bg-muted/30 transition-colors"
+                                  onClick={() => toggleTaskExpansion(taskKey)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="w-3 h-3 rounded-full"
+                                      style={{ backgroundColor: getProjectColor(task.project) }}
+                                    ></div>
+                                    <span className="text-sm text-foreground">{task.project}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <div className="text-sm text-foreground truncate" title={task.description}>
+                                      {task.description}
+                                      {task.taskCount > 1 && (
+                                        <span className="text-xs text-muted-foreground ml-2">
+                                          ({task.taskCount} entries)
+                                        </span>
+                                      )}
+                                    </div>
+                                    {task.taskCount > 1 && (
+                                      <button className="ml-2 p-1 hover:bg-muted rounded">
+                                        <svg
+                                          className={`w-4 h-4 text-muted-foreground transition-transform ${
+                                            isExpanded ? 'rotate-180' : ''
+                                          }`}
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="text-sm text-foreground text-right">
+                                    {task.totalHours.toFixed(1)}h
+                                  </div>
+                                  <div className="text-sm text-foreground text-right font-medium">
+                                    {formatCurrency(task.totalHours)}
+                                  </div>
+                                </div>
+                                
+                                {/* Expanded individual entries */}
+                                {isExpanded && task.entries.length > 1 && (
+                                  <div className="bg-muted/20 border-l-2 border-border ml-4">
+                                    <div className="grid grid-cols-4 gap-4 py-2 px-4 text-xs text-muted-foreground font-medium border-b border-border/50">
+                                      <div>Date</div>
+                                      <div>Description</div>
+                                      <div className="text-right">Hours</div>
+                                      <div className="text-right">Amount</div>
+                                    </div>
+                                    {task.entries
+                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                      .map((entry) => (
+                                        <div key={entry.id} className="grid grid-cols-4 gap-4 py-2 px-4 text-sm border-b border-border/30 last:border-b-0">
+                                          <div className="text-muted-foreground">
+                                            {new Date(entry.date).toLocaleDateString('en-US', { 
+                                              month: 'short', 
+                                              day: 'numeric' 
+                                            })}
+                                          </div>
+                                          <div className="text-muted-foreground truncate" title={entry.description}>
+                                            {entry.description}
+                                          </div>
+                                          <div className="text-muted-foreground text-right">
+                                            {entry.hours.toFixed(1)}h
+                                          </div>
+                                          <div className="text-muted-foreground text-right">
+                                            {formatCurrency(entry.hours)}
+                                          </div>
+                                        </div>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          <div className="grid grid-cols-4 gap-4 py-3 px-4 bg-muted/50 rounded-md font-semibold text-sm text-foreground border-t-2 border-border">
+                            <div></div>
+                            <div>Total</div>
+                            <div className="text-right">{monthlyStatement.totalHours.toFixed(1)}h</div>
+                            <div className="text-right font-medium">{formatCurrency(monthlyStatement.totalHours)}</div>
                           </div>
-                          <div className="text-sm text-foreground truncate" title={task.description}>
-                            {task.description}
+                        </>
+                      ) : (
+                        // Detailed View
+                        <>
+                          <div className="grid grid-cols-5 gap-4 py-2 px-4 bg-muted/50 rounded-md font-medium text-sm text-muted-foreground">
+                            <div>Date</div>
+                            <div>Project</div>
+                            <div>Description</div>
+                            <div className="text-right">Hours</div>
+                            <div className="text-right">Amount</div>
                           </div>
-                          <div className="text-sm text-foreground text-right">
-                            {task.hours.toFixed(1)}h
+                          {monthlyStatement.tasks.map((task) => (
+                            <div key={task.id} className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-border last:border-b-0">
+                              <div className="text-sm text-foreground">
+                                {new Date(task.date).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric' 
+                                })}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: getProjectColor(task.project) }}
+                                ></div>
+                                <span className="text-sm text-foreground">{task.project}</span>
+                              </div>
+                              <div className="text-sm text-foreground truncate" title={task.description}>
+                                {task.description}
+                              </div>
+                              <div className="text-sm text-foreground text-right">
+                                {task.hours.toFixed(1)}h
+                              </div>
+                              <div className="text-sm text-foreground text-right font-medium">
+                                {formatCurrency(task.hours)}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="grid grid-cols-5 gap-4 py-3 px-4 bg-muted/50 rounded-md font-semibold text-sm text-foreground border-t-2 border-border">
+                            <div></div>
+                            <div></div>
+                            <div>Total</div>
+                            <div className="text-right">{monthlyStatement.totalHours.toFixed(1)}h</div>
+                            <div className="text-right font-medium">{formatCurrency(monthlyStatement.totalHours)}</div>
                           </div>
-                          <div className="text-sm text-foreground text-right font-medium">
-                            {formatCurrency(task.hours)}
-                          </div>
-                        </div>
-                      ))}
-                      <div className="grid grid-cols-5 gap-4 py-3 px-4 bg-muted/50 rounded-md font-semibold text-sm text-foreground border-t-2 border-border">
-                        <div></div>
-                        <div></div>
-                        <div>Total</div>
-                        <div className="text-right">{monthlyStatement.totalHours.toFixed(1)}h</div>
-                        <div className="text-right">{formatCurrency(monthlyStatement.totalHours)}</div>
-                      </div>
+                        </>
+                      )}
                 </div>
               ) : (
                 <p className="text-muted-foreground text-center py-8">
