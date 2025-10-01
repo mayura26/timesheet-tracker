@@ -576,10 +576,11 @@ export default function ReportsPage() {
                 <h3 className="text-lg font-semibold text-foreground mb-4">Daily Breakdown</h3>
                 {Object.keys(weeklySummary.dailyBreakdown).length > 0 ? (
                   <div className="grid grid-cols-7 gap-2">
-                    {Array.from({ length: 7 }, (_, i) => {
-                      const date = new Date(weeklySummary.weekStart);
-                      date.setDate(date.getDate() + i);
-                      const dateString = date.toISOString().split('T')[0];
+                      {Array.from({ length: 7 }, (_, i) => {
+                        // Parse the week start date to avoid timezone issues
+                        const [year, month, day] = weeklySummary.weekStart.split('-').map(Number);
+                        const actualDate = new Date(year, month - 1, day + i);
+                        const dateString = `${actualDate.getFullYear()}-${(actualDate.getMonth() + 1).toString().padStart(2, '0')}-${actualDate.getDate().toString().padStart(2, '0')}`;
                       const hours = weeklySummary.dailyBreakdown[dateString] || 0;
                       const today = new Date();
                       const todayString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
@@ -596,11 +597,11 @@ export default function ReportsPage() {
                               : 'bg-muted border-border text-muted-foreground'
                           }`}
                         >
-                          <div className="text-sm font-medium">
-                            {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                          </div>
-                          <div className="text-xs mt-1">
-                            {date.getDate()}
+                            <div className="text-sm font-medium">
+                              {actualDate.toLocaleDateString('en-US', { weekday: 'short' })}
+                            </div>
+                            <div className="text-xs mt-1">
+                              {actualDate.getDate()}
                           </div>
                           <div className="text-xs mt-1 font-semibold">
                             {hours > 0 ? `${hours.toFixed(1)}h` : '—'}
@@ -763,14 +764,18 @@ export default function ReportsPage() {
                                       <div className="text-right">Amount</div>
                                     </div>
                                     {task.entries
-                                      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                      .sort((a, b) => a.date.localeCompare(b.date))
                                       .map((entry) => (
                                         <div key={entry.id} className="grid grid-cols-4 gap-4 py-2 px-4 text-sm border-b border-border/30 last:border-b-0">
                                           <div className="text-muted-foreground">
-                                            {new Date(entry.date).toLocaleDateString('en-US', { 
-                                              month: 'short', 
-                                              day: 'numeric' 
-                                            })}
+                                            {(() => {
+                                              const [year, month, day] = entry.date.split('-').map(Number);
+                                              const date = new Date(year, month - 1, day);
+                                              return date.toLocaleDateString('en-US', { 
+                                                month: 'short', 
+                                                day: 'numeric' 
+                                              });
+                                            })()}
                                           </div>
                                           <div className="text-muted-foreground truncate" title={entry.description}>
                                             {entry.description}
@@ -808,10 +813,14 @@ export default function ReportsPage() {
                           {monthlyStatement.tasks.map((task) => (
                             <div key={task.id} className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-border last:border-b-0">
                               <div className="text-sm text-foreground">
-                                {new Date(task.date).toLocaleDateString('en-US', { 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })}
+                                {(() => {
+                                  const [year, month, day] = task.date.split('-').map(Number);
+                                  const date = new Date(year, month - 1, day);
+                                  return date.toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric' 
+                                  });
+                                })()}
                               </div>
                               <div className="flex items-center gap-2">
                                 <div
