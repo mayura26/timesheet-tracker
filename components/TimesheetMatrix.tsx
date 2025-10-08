@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { TimeEntry, DayData, WeekData, Project } from '@/lib/schema';
+import { TimeEntry, DayData, WeekData, Project, Task } from '@/lib/schema';
 import { toast } from 'sonner';
+import TaskDetailsDialog from './TaskDetailsDialog';
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -12,6 +13,9 @@ interface TaskRow {
   description: string;
   hours: { [date: string]: number };
   totalHours: number;
+  budgeted_hours?: number;
+  hours_billed?: number;
+  hours_remaining?: number;
 }
 
 // Skeleton Components
@@ -91,6 +95,7 @@ export default function TimesheetMatrix() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingWeek, setIsLoadingWeek] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<{ id: string; project: string; description: string } | null>(null);
   
   // Track pending updates to prevent race conditions
   const pendingUpdatesRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
@@ -202,10 +207,41 @@ export default function TimesheetMatrix() {
         return a.description.localeCompare(b.description);
       });
       
-      setTaskRows(tasks);
+      // Load budget data for all tasks
+      await loadTaskBudgets(tasks);
+      
       setCurrentWeek(weekData);
     } catch (error) {
       console.error('Error loading week data:', error);
+    }
+  };
+
+  const loadTaskBudgets = async (tasks: TaskRow[]) => {
+    try {
+      // Fetch all tasks from the database
+      const response = await fetch('/api/tasks');
+      if (!response.ok) return;
+      
+      const tasksData: Task[] = await response.json();
+      
+      // Map budget data to task rows
+      const updatedTasks = tasks.map(task => {
+        const taskData = tasksData.find(t => t.id === task.id);
+        if (taskData) {
+          return {
+            ...task,
+            budgeted_hours: taskData.budgeted_hours,
+            hours_billed: taskData.hours_billed,
+            hours_remaining: taskData.hours_remaining
+          };
+        }
+        return task;
+      });
+      
+      setTaskRows(updatedTasks);
+    } catch (error) {
+      console.error('Error loading task budgets:', error);
+      setTaskRows(tasks); // Set tasks without budget data if fetch fails
     }
   };
 
@@ -241,7 +277,7 @@ export default function TimesheetMatrix() {
     };
   };
 
-  const addTask = async (project: string, description: string) => {
+  const addTask = async (project: string, description: string, budgetedHours?: number, notes?: string) => {
     try {
       const taskKey = `${project}|${description}`;
       
@@ -251,12 +287,29 @@ export default function TimesheetMatrix() {
         return;
       }
 
+      // Create task in database if budgeted hours or notes are provided
+      if (budgetedHours || notes) {
+        await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_name: project,
+            description: description,
+            budgeted_hours: budgetedHours || 0,
+            notes: notes || ''
+          })
+        });
+      }
+
       const newTask: TaskRow = {
         id: taskKey,
         project,
         description,
         hours: {},
-        totalHours: 0
+        totalHours: 0,
+        budgeted_hours: budgetedHours,
+        hours_billed: 0,
+        hours_remaining: budgetedHours || 0
       };
 
       setTaskRows([...taskRows, newTask].sort((a, b) => {
@@ -571,6 +624,29 @@ export default function TimesheetMatrix() {
     return dateString === getTodayDateString();
   };
 
+  const getRemainingHoursBadgeColor = (task: TaskRow) => {
+    if (!task.budgeted_hours || task.budgeted_hours === 0) return '';
+    
+    const remaining = task.hours_remaining || 0;
+    const percentage = (remaining / task.budgeted_hours) * 100;
+    
+    if (remaining <= 0) {
+      return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+    }
+    if (percentage <= 20) {
+      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+    }
+    return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
+  };
+
+  const handleTaskDialogClose = () => {
+    setSelectedTask(null);
+    // Reload task budgets to reflect changes
+    if (currentWeek) {
+      loadWeekData(currentWeek);
+    }
+  };
+
   if (isLoading) {
     return <TimesheetSkeleton />;
   }
@@ -701,8 +777,21 @@ export default function TimesheetMatrix() {
                     </svg>
                   </button>
                 </div>
-                <div className="text-xs text-muted-foreground mb-2">{task.description}</div>
-                <div className="text-xs font-medium text-primary">Total: {task.totalHours.toFixed(1)}h</div>
+                <button
+                  onClick={() => setSelectedTask({ id: task.id, project: task.project, description: task.description })}
+                  className="w-full text-left hover:bg-muted/50 -mx-2 px-2 py-1 rounded transition-colors"
+                  title="Click to view task details and budget"
+                >
+                  <div className="text-xs text-muted-foreground mb-2">{task.description}</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-medium text-primary">Total: {task.totalHours.toFixed(1)}h</div>
+                    {task.budgeted_hours !== undefined && task.budgeted_hours > 0 && (
+                      <div className={`text-xs font-medium px-2 py-0.5 rounded-full ${getRemainingHoursBadgeColor(task)}`}>
+                        {task.hours_remaining! >= 0 ? `${task.hours_remaining!.toFixed(1)}h left` : `${Math.abs(task.hours_remaining!).toFixed(1)}h over`}
+                      </div>
+                    )}
+                  </div>
+                </button>
               </div>
               
               {/* Hours Inputs for each day */}
@@ -802,8 +891,19 @@ export default function TimesheetMatrix() {
         <AddTaskForm
           projects={projects}
           recentDescriptions={recentDescriptions}
-          onSave={(project, description) => addTask(project, description)}
+          onSave={(project, description, budgetedHours, notes) => addTask(project, description, budgetedHours, notes)}
           onCancel={() => setShowAddTask(false)}
+        />
+      )}
+
+      {/* Task Details Dialog */}
+      {selectedTask && (
+        <TaskDetailsDialog
+          taskId={selectedTask.id}
+          projectName={selectedTask.project}
+          description={selectedTask.description}
+          onClose={handleTaskDialogClose}
+          onUpdate={handleTaskDialogClose}
         />
       )}
     </div>
@@ -813,20 +913,22 @@ export default function TimesheetMatrix() {
 interface AddTaskFormProps {
   projects: Project[];
   recentDescriptions: string[];
-  onSave: (project: string, description: string) => void;
+  onSave: (project: string, description: string, budgetedHours?: number, notes?: string) => void;
   onCancel: () => void;
 }
 
 function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTaskFormProps) {
   const [formData, setFormData] = useState({
     project: projects.length > 0 ? projects[0].name : '',
-    description: ''
+    description: '',
+    budgetedHours: 0,
+    notes: ''
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.project && formData.description.trim()) {
-      onSave(formData.project, formData.description.trim());
+      onSave(formData.project, formData.description.trim(), formData.budgetedHours, formData.notes.trim());
     }
   };
 
@@ -878,6 +980,32 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
                 </div>
               )}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Budgeted Hours (Optional)</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.budgetedHours || ''}
+              onChange={(e) => setFormData({ ...formData, budgetedHours: parseFloat(e.target.value) || 0 })}
+              className="w-full p-2 border border-border rounded-md bg-background"
+              placeholder="Enter budgeted hours"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Set a budget to track hours remaining for this task
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">Notes (Optional)</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              className="w-full p-2 border border-border rounded-md bg-background h-20 resize-none"
+              placeholder="Add any notes or additional information..."
+            />
           </div>
           
           <div className="flex gap-2 justify-end">

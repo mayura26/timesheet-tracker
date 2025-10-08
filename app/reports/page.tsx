@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MonthlyReport, Project, MonthlyStatement, TaskEntry } from '@/lib/schema';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import TaskDetailsDialog from '@/components/TaskDetailsDialog';
 
 interface WeeklySummary {
   weekStart: string;
@@ -23,6 +24,7 @@ export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState('statement');
   const [isSummaryView, setIsSummaryView] = useState(false);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [selectedTask, setSelectedTask] = useState<{ id: string; project: string; description: string } | null>(null);
 
   const loadProjects = async () => {
     try {
@@ -291,6 +293,22 @@ export default function ReportsPage() {
       }
       return newSet;
     });
+  };
+
+  // Open task details dialog
+  const openTaskDialog = (project: string, description: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const taskId = `${project}|${description}`;
+    setSelectedTask({ id: taskId, project, description });
+  };
+
+  // Close task details dialog and reload data
+  const handleTaskDialogClose = () => {
+    setSelectedTask(null);
+    // Reload the current view to reflect any changes
+    if (activeTab === 'statement') {
+      loadMonthlyStatement();
+    }
   };
 
   // Get number of days in a month (month is 1-based)
@@ -750,7 +768,7 @@ export default function ReportsPage() {
                             return (
                               <div key={taskKey}>
                                 <div 
-                                  className="grid grid-cols-4 gap-4 py-3 px-4 border-b border-border last:border-b-0 cursor-pointer hover:bg-muted/30 transition-colors"
+                                  className="grid grid-cols-4 gap-4 py-3 px-4 border-b border-border last:border-b-0 cursor-pointer hover:bg-muted/30 transition-colors group"
                                   onClick={() => toggleTaskExpansion(taskKey)}
                                 >
                                   <div className="flex items-center gap-2">
@@ -769,20 +787,31 @@ export default function ReportsPage() {
                                         </span>
                                       )}
                                     </div>
-                                    {task.taskCount > 1 && (
-                                      <button className="ml-2 p-1 hover:bg-muted rounded">
-                                        <svg
-                                          className={`w-4 h-4 text-muted-foreground transition-transform ${
-                                            isExpanded ? 'rotate-180' : ''
-                                          }`}
-                                          fill="none"
-                                          stroke="currentColor"
-                                          viewBox="0 0 24 24"
-                                        >
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    <div className="flex items-center gap-1">
+                                      <button 
+                                        onClick={(e) => openTaskDialog(task.project, task.description, e)}
+                                        className="p-1 hover:bg-primary/10 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="View task budget"
+                                      >
+                                        <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                         </svg>
                                       </button>
-                                    )}
+                                      {task.taskCount > 1 && (
+                                        <button className="ml-1 p-1 hover:bg-muted rounded">
+                                          <svg
+                                            className={`w-4 h-4 text-muted-foreground transition-transform ${
+                                              isExpanded ? 'rotate-180' : ''
+                                            }`}
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="text-sm text-foreground text-right">
                                     {task.totalHours.toFixed(1)}h
@@ -899,6 +928,17 @@ export default function ReportsPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Task Details Dialog */}
+      {selectedTask && (
+        <TaskDetailsDialog
+          taskId={selectedTask.id}
+          projectName={selectedTask.project}
+          description={selectedTask.description}
+          onClose={handleTaskDialogClose}
+          onUpdate={handleTaskDialogClose}
+        />
+      )}
     </div>
   );
 }

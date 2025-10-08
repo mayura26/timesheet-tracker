@@ -54,3 +54,15 @@ export interface MonthlyStatement {
   tasks: TaskEntry[];
   projectSummary: { [projectName: string]: { hours: number; earnings: number } };
 }
+
+export interface Task {
+  id: string;
+  project_name: string;
+  description: string;
+  budgeted_hours: number;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+  hours_billed?: number; // Calculated field
+  hours_remaining?: number; // Calculated field
+}
