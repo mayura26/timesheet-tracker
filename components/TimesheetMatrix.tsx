@@ -558,6 +558,19 @@ export default function TimesheetMatrix() {
     return project?.color || '#3b82f6';
   };
 
+  const getTodayDateString = () => {
+    // Get today's date without timezone issues
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = (today.getMonth() + 1).toString().padStart(2, '0');
+    const day = today.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const isToday = (dateString: string) => {
+    return dateString === getTodayDateString();
+  };
+
   if (isLoading) {
     return <TimesheetSkeleton />;
   }
@@ -643,12 +656,27 @@ export default function TimesheetMatrix() {
               </div>
             </div>
           </div>
-          {currentWeek.days.map((day) => (
-            <div key={day.date} className="bg-muted p-4 font-semibold text-center border-r border-border last:border-r-0">
-              <div className="text-sm">{getDayName(day.date)}</div>
-              <div className="text-xs text-muted-foreground">{formatDate(day.date)}</div>
-            </div>
-          ))}
+          {currentWeek.days.map((day) => {
+            const isTodayDay = isToday(day.date);
+            return (
+              <div 
+                key={day.date} 
+                className={`p-4 font-semibold text-center border-r border-border last:border-r-0 ${
+                  isTodayDay 
+                    ? 'bg-primary/20 border-2 border-primary ring-2 ring-primary/30' 
+                    : 'bg-muted'
+                }`}
+              >
+                <div className={`text-sm ${isTodayDay ? 'text-primary font-bold' : ''}`}>
+                  {getDayName(day.date)}
+                  {isTodayDay && ' (Today)'}
+                </div>
+                <div className={`text-xs ${isTodayDay ? 'text-primary font-semibold' : 'text-muted-foreground'}`}>
+                  {formatDate(day.date)}
+                </div>
+              </div>
+            );
+          })}
           
           {/* Task Rows */}
           {taskRows.map((task) => (
@@ -678,23 +706,35 @@ export default function TimesheetMatrix() {
               </div>
               
               {/* Hours Inputs for each day */}
-              {currentWeek.days.map((day) => (
-                <div key={`${task.id}-${day.date}`} className="bg-background p-2 border-r border-border border-t border-border last:border-r-0">
-                  <input
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    max="24"
-                    value={task.hours[day.date] || ''}
-                    onChange={(e) => {
-                      const hours = parseFloat(e.target.value) || 0;
-                      updateTaskHours(task.id, day.date, hours);
-                    }}
-                    className="w-full p-1 text-center text-sm border border-border rounded bg-background focus:border-primary focus:outline-none"
-                    placeholder="0"
-                  />
-                </div>
-              ))}
+              {currentWeek.days.map((day) => {
+                const isTodayDay = isToday(day.date);
+                return (
+                  <div 
+                    key={`${task.id}-${day.date}`} 
+                    className={`p-2 border-r border-t border-border last:border-r-0 ${
+                      isTodayDay ? 'bg-primary/5' : 'bg-background'
+                    }`}
+                  >
+                    <input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      max="24"
+                      value={task.hours[day.date] || ''}
+                      onChange={(e) => {
+                        const hours = parseFloat(e.target.value) || 0;
+                        updateTaskHours(task.id, day.date, hours);
+                      }}
+                      className={`w-full p-1 text-center text-sm border rounded focus:outline-none ${
+                        isTodayDay 
+                          ? 'border-primary/40 bg-background/95 focus:border-primary focus:ring-1 focus:ring-primary/20' 
+                          : 'border-border bg-background focus:border-primary'
+                      }`}
+                      placeholder="0"
+                    />
+                  </div>
+                );
+              })}
             </div>
           ))}
           
@@ -729,13 +769,21 @@ export default function TimesheetMatrix() {
               <div className="bg-primary/5 p-4 border-r border-border border-t-2 border-t-border font-semibold">
                 Daily Totals
               </div>
-              {currentWeek.days.map((day) => (
-                <div key={`total-${day.date}`} className="bg-primary/5 p-4 text-center border-r border-border border-t-2 border-t-border last:border-r-0">
-                  <span className="text-sm font-bold text-primary">
-                    {dailyTotals[day.date] > 0 ? `${dailyTotals[day.date].toFixed(1)}h` : '-'}
-                  </span>
-                </div>
-              ))}
+              {currentWeek.days.map((day) => {
+                const isTodayDay = isToday(day.date);
+                return (
+                  <div 
+                    key={`total-${day.date}`} 
+                    className={`p-4 text-center border-r border-border border-t-2 border-t-border last:border-r-0 ${
+                      isTodayDay ? 'bg-primary/15' : 'bg-primary/5'
+                    }`}
+                  >
+                    <span className="text-sm font-bold text-primary">
+                      {dailyTotals[day.date] > 0 ? `${dailyTotals[day.date].toFixed(1)}h` : '-'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
