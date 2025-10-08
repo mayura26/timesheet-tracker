@@ -90,16 +90,16 @@ export default function ReportsPage() {
     try {
       // Get current week
       const today = new Date();
-      const startOfWeek = new Date(today);
       const day = today.getDay();
-      const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
-      startOfWeek.setDate(diff);
+      const daysToMonday = day === 0 ? -6 : 1 - day; // Monday is day 1
       
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      // Calculate start of week using date constructor to avoid timezone issues
+      const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysToMonday);
+      const endOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysToMonday + 6);
       
-      const startDate = startOfWeek.toISOString().split('T')[0];
-      const endDate = endOfWeek.toISOString().split('T')[0];
+      // Format dates using local date components to avoid timezone shifts
+      const startDate = `${startOfWeek.getFullYear()}-${(startOfWeek.getMonth() + 1).toString().padStart(2, '0')}-${startOfWeek.getDate().toString().padStart(2, '0')}`;
+      const endDate = `${endOfWeek.getFullYear()}-${(endOfWeek.getMonth() + 1).toString().padStart(2, '0')}-${endOfWeek.getDate().toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries = await response.json();
@@ -442,40 +442,78 @@ export default function ReportsPage() {
                 {/* Daily Breakdown */}
                 <div className="bg-card rounded-lg border border-border p-6">
                   <h3 className="text-lg font-semibold text-foreground mb-4">Daily Breakdown</h3>
-                  {Object.keys(report.dailyBreakdown).length > 0 ? (
-                    <div className="grid grid-cols-7 gap-2">
-                      {Array.from({ length: getDaysInMonth(selectedYear, selectedMonth) }, (_, i) => {
-                        const day = i + 1;
-                        const date = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-                        const hours = report.dailyBreakdown[date] || 0;
-                        
-                        
-                        const today = new Date();
-                        const todayString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-                        const isToday = todayString === date;
-                        
-                        return (
-                          <div
-                            key={day}
-                            className={`p-3 rounded-lg border text-center ${
-                              isToday
-                                ? 'bg-primary/10 border-primary text-primary'
-                                : hours > 0
-                                ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950/20 dark:border-green-800 dark:text-green-300'
-                                : 'bg-muted border-border text-muted-foreground'
-                            }`}
-                          >
-                            <div className="text-sm font-medium">{day}</div>
-                            <div className="text-xs mt-1">
-                              {hours > 0 ? `${hours.toFixed(1)}h` : '—'}
-                            </div>
+                  {Object.keys(report.dailyBreakdown).length > 0 || true ? (
+                    <div className="space-y-3">
+                      {/* Day of week headers */}
+                      <div className="grid grid-cols-7 gap-2">
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                          <div key={day} className="text-center text-sm font-semibold text-muted-foreground py-2">
+                            {day}
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
+                      
+                      {/* Calendar grid */}
+                      <div className="grid grid-cols-7 gap-2">
+                        {(() => {
+                          const firstDay = new Date(selectedYear, selectedMonth - 1, 1);
+                          const lastDay = getDaysInMonth(selectedYear, selectedMonth);
+                          // Get day of week (0 = Sunday, 1 = Monday, etc.)
+                          let firstDayOfWeek = firstDay.getDay();
+                          // Convert to Monday = 0, Sunday = 6
+                          firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+                          
+                          const cells = [];
+                          
+                          // Add empty cells for days before the first of the month
+                          for (let i = 0; i < firstDayOfWeek; i++) {
+                            cells.push(
+                              <div key={`empty-${i}`} className="p-3 rounded-lg border border-transparent"></div>
+                            );
+                          }
+                          
+                          // Add cells for each day of the month
+                          for (let day = 1; day <= lastDay; day++) {
+                            const date = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                            const hours = report.dailyBreakdown[date] || 0;
+                            
+                            const today = new Date();
+                            const todayString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+                            const isToday = todayString === date;
+                            
+                            // Get day of week for styling weekends
+                            const currentDate = new Date(selectedYear, selectedMonth - 1, day);
+                            const dayOfWeek = currentDate.getDay();
+                            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                            
+                            cells.push(
+                              <div
+                                key={day}
+                                className={`p-3 rounded-lg border text-center transition-all ${
+                                  isToday
+                                    ? 'bg-primary/10 border-primary text-primary ring-2 ring-primary/20'
+                                    : hours > 0
+                                    ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950/20 dark:border-green-800 dark:text-green-300'
+                                    : isWeekend
+                                    ? 'bg-muted/50 border-border/50 text-muted-foreground/60'
+                                    : 'bg-muted border-border text-muted-foreground'
+                                }`}
+                              >
+                                <div className="text-sm font-medium">{day}</div>
+                                <div className="text-xs mt-1 font-semibold">
+                                  {hours > 0 ? `${hours.toFixed(1)}h` : '—'}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          return cells;
+                        })()}
+                      </div>
                     </div>
                   ) : (
                     <p className="text-muted-foreground text-center py-8">
-                      No time entries found for {report.month} {report.year}
+                      No time entries found for {report?.month} {report?.year}
                     </p>
                   )}
                 </div>
