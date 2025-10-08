@@ -16,6 +16,7 @@ interface TaskRow {
   budgeted_hours?: number;
   hours_billed?: number;
   hours_remaining?: number;
+  completion_percentage?: number;
 }
 
 // Skeleton Components
@@ -231,7 +232,8 @@ export default function TimesheetMatrix() {
             ...task,
             budgeted_hours: taskData.budgeted_hours,
             hours_billed: taskData.hours_billed,
-            hours_remaining: taskData.hours_remaining
+            hours_remaining: taskData.hours_remaining,
+            completion_percentage: taskData.completion_percentage
           };
         }
         return task;
@@ -773,6 +775,11 @@ export default function TimesheetMatrix() {
                       style={{ backgroundColor: getProjectColor(task.project) }}
                     ></div>
                     <span className="font-medium text-sm">{task.project}</span>
+                    {task.completion_percentage !== undefined && (
+                      <div className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                        {task.completion_percentage.toFixed(0)}%
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => deleteTask(task.id)}

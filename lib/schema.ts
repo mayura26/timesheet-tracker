@@ -65,4 +65,5 @@ export interface Task {
   updated_at?: string;
   hours_billed?: number; // Calculated field
   hours_remaining?: number; // Calculated field
+  completion_percentage?: number; // Calculated field - percentage of subtasks completed
 }

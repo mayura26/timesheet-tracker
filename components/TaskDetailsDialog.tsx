@@ -8,6 +8,7 @@ interface ChecklistItem {
   id: string;
   text: string;
   checked: boolean;
+  hours: number;
   lineIndex: number;
 }
 
@@ -18,21 +19,24 @@ function parseNotes(notes: string): { checklist: ChecklistItem[], regularText: s
   const regularText: string[] = [];
   
   lines.forEach((line, index) => {
-    const uncheckedMatch = line.match(/^- \[ \] (.*)$/);
-    const checkedMatch = line.match(/^- \[x\] (.*)$/i);
+    // Match patterns: "- [ ] text" or "- [ ] text (2.5h)"
+    const uncheckedMatch = line.match(/^- \[ \] (.+?)(?:\s*\(([0-9.]+)h\))?$/);
+    const checkedMatch = line.match(/^- \[x\] (.+?)(?:\s*\(([0-9.]+)h\))?$/i);
     
     if (uncheckedMatch) {
       checklist.push({
         id: `item-${index}-${Date.now()}`,
-        text: uncheckedMatch[1],
+        text: uncheckedMatch[1].trim(),
         checked: false,
+        hours: uncheckedMatch[2] ? parseFloat(uncheckedMatch[2]) : 0,
         lineIndex: index
       });
     } else if (checkedMatch) {
       checklist.push({
         id: `item-${index}-${Date.now()}`,
-        text: checkedMatch[1],
+        text: checkedMatch[1].trim(),
         checked: true,
+        hours: checkedMatch[2] ? parseFloat(checkedMatch[2]) : 0,
         lineIndex: index
       });
     } else if (line.trim()) {
@@ -46,7 +50,7 @@ function parseNotes(notes: string): { checklist: ChecklistItem[], regularText: s
 // Convert checklist items and regular text back to notes string
 function serializeNotes(checklist: ChecklistItem[], regularText: string[]): string {
   const checklistLines = checklist.map(item => 
-    `- [${item.checked ? 'x' : ' '}] ${item.text}`
+    `- [${item.checked ? 'x' : ' '}] ${item.text} (${item.hours}h)`
   );
   
   return [...checklistLines, ...regularText].join('\n');
@@ -244,6 +248,17 @@ export default function TaskDetailsDialog({
     });
   };
 
+  const updateChecklistItemHours = (itemId: string, hours: number) => {
+    setChecklist(prev => {
+      const updated = prev.map(item => 
+        item.id === itemId ? { ...item, hours: Math.max(0, hours) } : item
+      );
+      // Debounced auto-save for hours edits
+      debouncedAutoSave(updated, regularNotes);
+      return updated;
+    });
+  };
+
   const removeChecklistItem = (itemId: string) => {
     setChecklist(prev => {
       const updated = prev.filter(item => item.id !== itemId);
@@ -260,6 +275,7 @@ export default function TaskDetailsDialog({
       id: `item-${Date.now()}`,
       text: newItemText.trim(),
       checked: false,
+      hours: 0,
       lineIndex: checklist.length
     };
     
@@ -414,28 +430,59 @@ export default function TaskDetailsDialog({
               </div>
             </div>
 
-            {/* Progress Bar */}
-            {task.budgeted_hours > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium">Progress</label>
-                  <span className="text-sm text-muted-foreground">
-                    {getProgressPercentage().toFixed(0)}%
-                  </span>
+            {/* Progress Bars */}
+            <div className="space-y-4">
+              {/* Budget Progress */}
+              {task.budgeted_hours > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium">Budget Progress</label>
+                    <span className="text-sm text-muted-foreground">
+                      {getProgressPercentage().toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${getProgressColor()} transition-all duration-300`}
+                      style={{ width: `${getProgressPercentage()}%` }}
+                    ></div>
+                  </div>
+                  {task.hours_remaining! < 0 && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                      ⚠ Over budget by {Math.abs(task.hours_remaining!).toFixed(1)} hours
+                    </p>
+                  )}
                 </div>
-                <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${getProgressColor()} transition-all duration-300`}
-                    style={{ width: `${getProgressPercentage()}%` }}
-                  ></div>
+              )}
+
+              {/* Work Completion Progress */}
+              {checklist.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium">Work Completion</label>
+                    <span className="text-sm text-muted-foreground">
+                      {((checklist.filter(item => item.checked).length / checklist.length) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ 
+                        width: `${(checklist.filter(item => item.checked).length / checklist.length) * 100}%` 
+                      }}
+                    ></div>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-muted-foreground">
+                      {checklist.filter(item => item.checked).length} of {checklist.length} subtasks
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {checklist.filter(item => item.checked).reduce((sum, item) => sum + item.hours, 0).toFixed(1)}h / {checklist.reduce((sum, item) => sum + item.hours, 0).toFixed(1)}h
+                    </p>
+                  </div>
                 </div>
-                {task.hours_remaining! < 0 && (
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                    ⚠ Over budget by {Math.abs(task.hours_remaining!).toFixed(1)} hours
-                  </p>
-                )}
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Editable Fields */}
             <div className="space-y-4 pt-4 border-t border-border">
@@ -492,7 +539,7 @@ export default function TaskDetailsDialog({
                         type="checkbox"
                         checked={item.checked}
                         onChange={() => toggleChecklistItem(item.id)}
-                        className="mt-1 w-4 h-4 cursor-pointer"
+                        className="mt-1 w-4 h-4 cursor-pointer flex-shrink-0"
                       />
                       <input
                         type="text"
@@ -501,11 +548,24 @@ export default function TaskDetailsDialog({
                         className={`flex-1 bg-transparent border-none outline-none text-sm ${
                           item.checked ? 'line-through text-muted-foreground' : ''
                         }`}
+                        placeholder="Subtask description"
                       />
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={item.hours}
+                          onChange={(e) => updateChecklistItemHours(item.id, parseFloat(e.target.value) || 0)}
+                          className="w-16 px-2 py-1 text-xs border border-border rounded bg-background text-right"
+                          placeholder="0"
+                        />
+                        <span className="text-xs text-muted-foreground">h</span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => removeChecklistItem(item.id)}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity flex-shrink-0"
                         title="Remove item"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -561,8 +621,13 @@ export default function TaskDetailsDialog({
                 </div>
                 
                 {checklist.length > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    {checklist.filter(item => item.checked).length} of {checklist.length} completed
+                  <div className="text-xs text-muted-foreground flex items-center justify-between">
+                    <span>
+                      {checklist.filter(item => item.checked).length} of {checklist.length} completed
+                    </span>
+                    <span>
+                      Total: {checklist.reduce((sum, item) => sum + item.hours, 0).toFixed(1)}h
+                    </span>
                   </div>
                 )}
               </div>
