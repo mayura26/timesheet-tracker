@@ -545,6 +545,14 @@ export default function TimesheetMatrix() {
   }
 
   const weekTotal = taskRows.reduce((sum, task) => sum + task.totalHours, 0);
+  
+  // Calculate daily totals
+  const dailyTotals: { [date: string]: number } = {};
+  currentWeek.days.forEach(day => {
+    dailyTotals[day.date] = taskRows.reduce((sum, task) => {
+      return sum + (task.hours[day.date] || 0);
+    }, 0);
+  });
 
   return (
     <div className="space-y-6">
@@ -690,6 +698,22 @@ export default function TimesheetMatrix() {
                   Copy from Last Week
                 </button>
               </div>
+            </div>
+          )}
+          
+          {/* Daily Totals Row */}
+          {taskRows.length > 0 && (
+            <div className="contents">
+              <div className="bg-primary/5 p-4 border-r border-border border-t-2 border-t-border font-semibold">
+                Daily Totals
+              </div>
+              {currentWeek.days.map((day) => (
+                <div key={`total-${day.date}`} className="bg-primary/5 p-4 text-center border-r border-border border-t-2 border-t-border last:border-r-0">
+                  <span className="text-sm font-bold text-primary">
+                    {dailyTotals[day.date] > 0 ? `${dailyTotals[day.date].toFixed(1)}h` : '-'}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>
