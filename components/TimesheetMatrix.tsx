@@ -170,9 +170,11 @@ export default function TimesheetMatrix() {
   const loadWeekData = async (weekData: WeekData) => {
     try {
       const startDate = weekData.weekStart;
-      const startDateObj = new Date(startDate);
-      const endDateObj = new Date(startDateObj);
-      endDateObj.setDate(startDateObj.getDate() + 6);
+      const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+      const startDateObj = new Date(startYear, startMonth - 1, startDay);
+      
+      // Calculate end date safely by adding 6 days
+      const endDateObj = new Date(startYear, startMonth - 1, startDay + 6);
       const endDate = `${endDateObj.getFullYear()}-${(endDateObj.getMonth() + 1).toString().padStart(2, '0')}-${endDateObj.getDate().toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
@@ -209,8 +211,6 @@ export default function TimesheetMatrix() {
       
       // Load budget data for all tasks
       await loadTaskBudgets(tasks);
-      
-      setCurrentWeek(weekData);
     } catch (error) {
       console.error('Error loading week data:', error);
     }
@@ -444,9 +444,11 @@ export default function TimesheetMatrix() {
       if (!currentWeek) return;
       
       const startDate = currentWeek.weekStart;
-      const startDateObj = new Date(startDate);
-      const endDateObj = new Date(startDateObj);
-      endDateObj.setDate(startDateObj.getDate() + 6);
+      const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+      const startDateObj = new Date(startYear, startMonth - 1, startDay);
+      
+      // Calculate end date safely by adding 6 days
+      const endDateObj = new Date(startYear, startMonth - 1, startDay + 6);
       const endDate = `${endDateObj.getFullYear()}-${(endDateObj.getMonth() + 1).toString().padStart(2, '0')}-${endDateObj.getDate().toString().padStart(2, '0')}`;
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
@@ -485,13 +487,15 @@ export default function TimesheetMatrix() {
     if (!currentWeek) return;
 
     try {
-      // Calculate previous week dates
-      const currentStart = new Date(currentWeek.weekStart);
-      const lastWeekStart = new Date(currentStart);
-      lastWeekStart.setDate(currentStart.getDate() - 7);
+      // Calculate previous week dates safely
+      const [currentYear, currentMonth, currentDay] = currentWeek.weekStart.split('-').map(Number);
+      const currentStart = new Date(currentYear, currentMonth - 1, currentDay);
       
-      const lastWeekEnd = new Date(lastWeekStart);
-      lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+      // Calculate last week start (7 days before current week start)
+      const lastWeekStart = new Date(currentYear, currentMonth - 1, currentDay - 7);
+      
+      // Calculate last week end (6 days after last week start)
+      const lastWeekEnd = new Date(currentYear, currentMonth - 1, currentDay - 1);
       
       // Get entries from last week
       const lastWeekStartStr = `${lastWeekStart.getFullYear()}-${(lastWeekStart.getMonth() + 1).toString().padStart(2, '0')}-${lastWeekStart.getDate().toString().padStart(2, '0')}`;
@@ -577,9 +581,11 @@ export default function TimesheetMatrix() {
     if (!currentWeek || isLoadingWeek) return;
 
     setIsLoadingWeek(true);
-    const currentStart = new Date(currentWeek.weekStart);
-    const newStart = new Date(currentStart);
-    newStart.setDate(currentStart.getDate() + (direction === 'next' ? 7 : -7));
+    const [currentYear, currentMonth, currentDay] = currentWeek.weekStart.split('-').map(Number);
+    const currentStart = new Date(currentYear, currentMonth - 1, currentDay);
+    
+    // Calculate new week start safely by adding/subtracting 7 days
+    const newStart = new Date(currentYear, currentMonth - 1, currentDay + (direction === 'next' ? 7 : -7));
     
     const newWeekData = generateWeekData(newStart);
     setCurrentWeek(newWeekData);
@@ -603,7 +609,12 @@ export default function TimesheetMatrix() {
     // Parse the date string directly to avoid timezone conversion
     const [year, month, day] = dateString.split('-').map(Number);
     const date = new Date(year, month - 1, day); // month is 0-based in Date constructor
-    return DAYS_OF_WEEK[date.getDay() === 0 ? 6 : date.getDay() - 1];
+    
+    // Convert JavaScript day (0=Sunday, 1=Monday, etc.) to our array index (0=Monday, 1=Tuesday, etc.)
+    const jsDay = date.getDay();
+    const ourDayIndex = jsDay === 0 ? 6 : jsDay - 1; // Sunday (0) becomes 6, Monday (1) becomes 0, etc.
+    
+    return DAYS_OF_WEEK[ourDayIndex];
   };
 
   const getProjectColor = (projectName: string) => {
