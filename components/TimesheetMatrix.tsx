@@ -56,7 +56,7 @@ function TimesheetSkeleton() {
           {Array.from({ length: 3 }).map((_, taskIndex) => (
             <div key={taskIndex} className="contents">
               {/* Task Info Skeleton */}
-              <div className="bg-background p-4 border-r border-border border-t border-border">
+              <div className="bg-background p-4 border-r border-border border-t">
                 <div className="flex items-center gap-2 mb-1">
                   <SkeletonBox className="w-3 h-3 rounded-full" />
                   <SkeletonBox className="h-4 w-20" />
@@ -67,7 +67,7 @@ function TimesheetSkeleton() {
               
               {/* Hours Inputs Skeleton for each day */}
               {Array.from({ length: 7 }).map((_, dayIndex) => (
-                <div key={`${taskIndex}-${dayIndex}`} className="bg-background p-2 border-r border-border border-t border-border last:border-r-0">
+                <div key={`${taskIndex}-${dayIndex}`} className="bg-background p-2 border-r border-border border-t last:border-r-0">
                   <SkeletonBox className="h-8 w-full" />
                 </div>
               ))}

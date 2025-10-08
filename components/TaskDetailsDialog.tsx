@@ -1,8 +1,56 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Task } from '@/lib/schema';
 import { toast } from 'sonner';
+
+interface ChecklistItem {
+  id: string;
+  text: string;
+  checked: boolean;
+  lineIndex: number;
+}
+
+// Parse notes to extract checklist items and regular text
+function parseNotes(notes: string): { checklist: ChecklistItem[], regularText: string[] } {
+  const lines = notes.split('\n');
+  const checklist: ChecklistItem[] = [];
+  const regularText: string[] = [];
+  
+  lines.forEach((line, index) => {
+    const uncheckedMatch = line.match(/^- \[ \] (.*)$/);
+    const checkedMatch = line.match(/^- \[x\] (.*)$/i);
+    
+    if (uncheckedMatch) {
+      checklist.push({
+        id: `item-${index}-${Date.now()}`,
+        text: uncheckedMatch[1],
+        checked: false,
+        lineIndex: index
+      });
+    } else if (checkedMatch) {
+      checklist.push({
+        id: `item-${index}-${Date.now()}`,
+        text: checkedMatch[1],
+        checked: true,
+        lineIndex: index
+      });
+    } else if (line.trim()) {
+      regularText.push(line);
+    }
+  });
+  
+  return { checklist, regularText };
+}
+
+// Convert checklist items and regular text back to notes string
+function serializeNotes(checklist: ChecklistItem[], regularText: string[]): string {
+  const checklistLines = checklist.map(item => 
+    `- [${item.checked ? 'x' : ' '}] ${item.text}`
+  );
+  
+  return [...checklistLines, ...regularText].join('\n');
+}
 
 interface TaskDetailsDialogProps {
   taskId: string;
@@ -27,6 +75,13 @@ export default function TaskDetailsDialog({
     budgeted_hours: 0,
     notes: ''
   });
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [regularNotes, setRegularNotes] = useState('');
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [newItemText, setNewItemText] = useState('');
+  const [autoSaving, setAutoSaving] = useState(false);
+  const newItemInputRef = useRef<HTMLInputElement>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadTaskDetails();
@@ -40,11 +95,16 @@ export default function TaskDetailsDialog({
       if (response.ok) {
         const data = await response.json();
         setTask(data);
+        const notes = data.notes || '';
+        const parsed = parseNotes(notes);
+        
         setFormData({
           description: data.description || description,
           budgeted_hours: data.budgeted_hours || 0,
-          notes: data.notes || ''
+          notes: notes
         });
+        setChecklist(parsed.checklist);
+        setRegularNotes(parsed.regularText.join('\n'));
       } else {
         // Task doesn't exist yet, create it
         const createResponse = await fetch('/api/tasks', {
@@ -66,6 +126,8 @@ export default function TaskDetailsDialog({
             budgeted_hours: newTask.budgeted_hours || 0,
             notes: newTask.notes || ''
           });
+          setChecklist([]);
+          setRegularNotes('');
         }
       }
     } catch (error) {
@@ -88,6 +150,9 @@ export default function TaskDetailsDialog({
     try {
       setSaving(true);
       
+      // Serialize checklist and regular notes back to notes field
+      const serializedNotes = serializeNotes(checklist, regularNotes.split('\n').filter(line => line.trim()));
+      
       // Check if description changed
       const descriptionChanged = formData.description.trim() !== task.description;
       
@@ -97,7 +162,9 @@ export default function TaskDetailsDialog({
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            ...formData,
+            description: formData.description,
+            budgeted_hours: formData.budgeted_hours,
+            notes: serializedNotes,
             update_description: true
           })
         });
@@ -113,7 +180,7 @@ export default function TaskDetailsDialog({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             budgeted_hours: formData.budgeted_hours,
-            notes: formData.notes
+            notes: serializedNotes
           })
         });
 
@@ -154,15 +221,136 @@ export default function TaskDetailsDialog({
     return 'text-green-600 dark:text-green-400';
   };
 
+  // Checklist handlers
+  const toggleChecklistItem = (itemId: string) => {
+    setChecklist(prev => {
+      const updated = prev.map(item => 
+        item.id === itemId ? { ...item, checked: !item.checked } : item
+      );
+      // Immediate auto-save for checkbox toggles
+      autoSave(updated, regularNotes);
+      return updated;
+    });
+  };
+
+  const updateChecklistItemText = (itemId: string, newText: string) => {
+    setChecklist(prev => {
+      const updated = prev.map(item => 
+        item.id === itemId ? { ...item, text: newText } : item
+      );
+      // Debounced auto-save for text edits
+      debouncedAutoSave(updated, regularNotes);
+      return updated;
+    });
+  };
+
+  const removeChecklistItem = (itemId: string) => {
+    setChecklist(prev => {
+      const updated = prev.filter(item => item.id !== itemId);
+      // Immediate auto-save for deletions
+      autoSave(updated, regularNotes);
+      return updated;
+    });
+  };
+
+  const addChecklistItem = () => {
+    if (!newItemText.trim()) return;
+    
+    const newItem: ChecklistItem = {
+      id: `item-${Date.now()}`,
+      text: newItemText.trim(),
+      checked: false,
+      lineIndex: checklist.length
+    };
+    
+    setChecklist(prev => {
+      const updated = [...prev, newItem];
+      // Immediate auto-save for new items
+      autoSave(updated, regularNotes);
+      return updated;
+    });
+    setNewItemText('');
+    setShowAddItem(false);
+  };
+
+  const handleAddItemKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addChecklistItem();
+    } else if (e.key === 'Escape') {
+      setShowAddItem(false);
+      setNewItemText('');
+    }
+  };
+
+  // Auto-focus on new item input when it appears
+  useEffect(() => {
+    if (showAddItem && newItemInputRef.current) {
+      newItemInputRef.current.focus();
+    }
+  }, [showAddItem]);
+
+  // Auto-save function
+  const autoSave = useCallback(async (checklistToSave: ChecklistItem[], notesToSave: string) => {
+    if (!task) return;
+
+    try {
+      setAutoSaving(true);
+      const serializedNotes = serializeNotes(checklistToSave, notesToSave.split('\n').filter(line => line.trim()));
+      
+      await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          budgeted_hours: formData.budgeted_hours,
+          notes: serializedNotes
+        })
+      });
+
+      // Update formData to keep it in sync
+      setFormData(prev => ({ ...prev, notes: serializedNotes }));
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+      toast.error('Failed to auto-save changes');
+    } finally {
+      setAutoSaving(false);
+    }
+  }, [task, taskId, formData.budgeted_hours]);
+
+  // Debounced auto-save for text edits
+  const debouncedAutoSave = useCallback((checklistToSave: ChecklistItem[], notesToSave: string) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(() => {
+      autoSave(checklistToSave, notesToSave);
+    }, 1000); // 1 second debounce
+  }, [autoSave]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
       <div className="bg-card rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h3 className="text-xl font-semibold">Task Details</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Manage budget and notes for this task
-            </p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xl font-semibold">Task Details</h3>
+              {autoSaving && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  Saving...
+                </span>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -272,15 +460,128 @@ export default function TaskDetailsDialog({
                 </p>
               </div>
 
+              {/* Checklist Section */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium">
+                    Subtasks Checklist
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddItem(true)}
+                    className="text-xs px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded transition-colors flex items-center gap-1"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Add Item
+                  </button>
+                </div>
+                
+                <div className="space-y-2 mb-4">
+                  {checklist.length === 0 && !showAddItem && (
+                    <p className="text-sm text-muted-foreground italic py-2">
+                      No subtasks yet. Click "Add Item" to create a checklist.
+                    </p>
+                  )}
+                  
+                  {checklist.map((item) => (
+                    <div key={item.id} className="flex items-start gap-2 group p-2 rounded hover:bg-muted/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => toggleChecklistItem(item.id)}
+                        className="mt-1 w-4 h-4 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={item.text}
+                        onChange={(e) => updateChecklistItemText(item.id, e.target.value)}
+                        className={`flex-1 bg-transparent border-none outline-none text-sm ${
+                          item.checked ? 'line-through text-muted-foreground' : ''
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeChecklistItem(item.id)}
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                        title="Remove item"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                  
+                  {showAddItem && (
+                    <div className="flex items-center gap-2 p-2 bg-muted/50 rounded">
+                      <input
+                        type="checkbox"
+                        disabled
+                        className="w-4 h-4 opacity-50"
+                      />
+                      <input
+                        ref={newItemInputRef}
+                        type="text"
+                        value={newItemText}
+                        onChange={(e) => setNewItemText(e.target.value)}
+                        onKeyDown={handleAddItemKeyPress}
+                        placeholder="Enter subtask description..."
+                        className="flex-1 bg-transparent border-none outline-none text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={addChecklistItem}
+                        className="text-green-600 hover:text-green-700"
+                        title="Add"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddItem(false);
+                          setNewItemText('');
+                        }}
+                        className="text-muted-foreground hover:text-destructive"
+                        title="Cancel"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
+                {checklist.length > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    {checklist.filter(item => item.checked).length} of {checklist.length} completed
+                  </div>
+                )}
+              </div>
+
+              {/* Regular Notes Section */}
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  Notes
+                  Additional Notes
                 </label>
                 <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="w-full p-2 border border-border rounded-md bg-background h-32 resize-none"
-                  placeholder="Add notes about this task, deliverables, or any important information..."
+                  value={regularNotes}
+                  onChange={(e) => {
+                    const newNotes = e.target.value;
+                    setRegularNotes(newNotes);
+                    // Debounced auto-save for regular notes
+                    debouncedAutoSave(checklist, newNotes);
+                  }}
+                  className="w-full p-2 border border-border rounded-md bg-background h-24 resize-none"
+                  placeholder="Add any additional notes, deliverables, or important information..."
                 />
               </div>
             </div>
@@ -293,7 +594,7 @@ export default function TaskDetailsDialog({
                 disabled={saving}
                 className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50"
               >
-                Cancel
+                Close
               </button>
               <button
                 type="button"
@@ -307,10 +608,13 @@ export default function TaskDetailsDialog({
                     Saving...
                   </>
                 ) : (
-                  'Save Changes'
+                  'Save Budget & Description'
                 )}
               </button>
             </div>
+            <p className="text-xs text-center text-muted-foreground mt-2">
+              Checklist and notes auto-save as you type
+            </p>
           </div>
         ) : (
           <div className="text-center py-8">
