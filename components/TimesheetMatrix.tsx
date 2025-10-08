@@ -171,7 +171,6 @@ export default function TimesheetMatrix() {
     try {
       const startDate = weekData.weekStart;
       const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-      const startDateObj = new Date(startYear, startMonth - 1, startDay);
       
       // Calculate end date safely by adding 6 days
       const endDateObj = new Date(startYear, startMonth - 1, startDay + 6);
@@ -445,7 +444,6 @@ export default function TimesheetMatrix() {
       
       const startDate = currentWeek.weekStart;
       const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-      const startDateObj = new Date(startYear, startMonth - 1, startDay);
       
       // Calculate end date safely by adding 6 days
       const endDateObj = new Date(startYear, startMonth - 1, startDay + 6);
@@ -489,7 +487,6 @@ export default function TimesheetMatrix() {
     try {
       // Calculate previous week dates safely
       const [currentYear, currentMonth, currentDay] = currentWeek.weekStart.split('-').map(Number);
-      const currentStart = new Date(currentYear, currentMonth - 1, currentDay);
       
       // Calculate last week start (7 days before current week start)
       const lastWeekStart = new Date(currentYear, currentMonth - 1, currentDay - 7);
@@ -582,7 +579,6 @@ export default function TimesheetMatrix() {
 
     setIsLoadingWeek(true);
     const [currentYear, currentMonth, currentDay] = currentWeek.weekStart.split('-').map(Number);
-    const currentStart = new Date(currentYear, currentMonth - 1, currentDay);
     
     // Calculate new week start safely by adding/subtracting 7 days
     const newStart = new Date(currentYear, currentMonth - 1, currentDay + (direction === 'next' ? 7 : -7));
@@ -769,7 +765,7 @@ export default function TimesheetMatrix() {
           {taskRows.map((task) => (
             <div key={task.id} className="contents">
               {/* Task Info */}
-              <div className="bg-background p-4 border-r border-border border-t border-border">
+              <div className="bg-background p-4 border-r border-border border-t">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <div
