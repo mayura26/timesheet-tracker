@@ -353,6 +353,67 @@ export default function TaskDetailsDialog({
     };
   }, []);
 
+  // Auto-split hours evenly across all subtasks with 0.5h minimum rounding
+  const autoSplitHours = () => {
+    if (checklist.length === 0 || formData.budgeted_hours <= 0) return;
+
+    const numTasks = checklist.length;
+    const totalBudget = formData.budgeted_hours;
+    
+    // Calculate base hours per task
+    const baseHours = totalBudget / numTasks;
+    
+    // Round to nearest 0.5
+    const roundToHalf = (num: number) => Math.round(num * 2) / 2;
+    const roundedBase = roundToHalf(baseHours);
+    
+    // Ensure minimum of 0.5h per task
+    const safeBase = Math.max(0.5, roundedBase);
+    
+    // Start with all tasks getting the safe base amount
+    const hoursArray = new Array(numTasks).fill(safeBase);
+    
+    // Calculate current total and difference from budget
+    let currentTotal = safeBase * numTasks;
+    let difference = totalBudget - currentTotal;
+    
+    // Distribute the difference in 0.5h increments
+    let taskIndex = 0;
+    while (Math.abs(difference) >= 0.5) {
+      if (difference > 0) {
+        // Add 0.5h to tasks
+        hoursArray[taskIndex] += 0.5;
+        difference -= 0.5;
+      } else {
+        // Remove 0.5h from tasks (but never go below 0.5)
+        if (hoursArray[taskIndex] > 0.5) {
+          hoursArray[taskIndex] -= 0.5;
+          difference += 0.5;
+        }
+      }
+      taskIndex = (taskIndex + 1) % numTasks;
+      
+      // Safety check to prevent infinite loop
+      if (Math.abs(difference) < 0.25) break;
+    }
+    
+    // Apply the calculated hours to the checklist
+    setChecklist(prev => {
+      const updated = prev.map((item, index) => ({
+        ...item,
+        hours: hoursArray[index]
+      }));
+      // Auto-save the changes
+      autoSave(updated, regularNotes);
+      return updated;
+    });
+    
+    toast.success('Hours distributed evenly across subtasks', {
+      description: `${totalBudget}h split among ${numTasks} subtasks`,
+      duration: 2000
+    });
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
       <div className="bg-card rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
@@ -519,19 +580,25 @@ export default function TaskDetailsDialog({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium">
-                    Subtasks Checklist
+                    Subtasks Checklist {checklist.length > 0 && (
+                      <span className="text-muted-foreground">
+                        ({checklist.reduce((sum, item) => sum + item.hours, 0).toFixed(1)}h)
+                      </span>
+                    )}
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddItem(true)}
-                    className="text-xs px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded transition-colors flex items-center gap-1"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="12" y1="5" x2="12" y2="19"></line>
-                      <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    Add Item
-                  </button>
+                  {checklist.length > 0 && formData.budgeted_hours > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => autoSplitHours()}
+                      className="text-xs px-2 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded transition-colors flex items-center gap-1"
+                      title="Evenly distribute budgeted hours across all subtasks"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18"/>
+                      </svg>
+                      Auto Split
+                    </button>
+                  )}
                 </div>
                 
                 <div className="space-y-2 mb-4">
@@ -627,6 +694,20 @@ export default function TaskDetailsDialog({
                     </div>
                   )}
                 </div>
+                
+                {!showAddItem && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddItem(true)}
+                    className="w-full text-xs px-3 py-2 bg-primary/10 text-primary hover:bg-primary/20 rounded transition-colors flex items-center justify-center gap-1 mb-4"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="5" x2="12" y2="19"></line>
+                      <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Add Item
+                  </button>
+                )}
                 
                 {checklist.length > 0 && (
                   <div className="text-xs text-muted-foreground flex items-center justify-between">
