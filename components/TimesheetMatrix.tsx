@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TimeEntry, DayData, WeekData, Project } from '@/lib/schema';
 import { toast } from 'sonner';
 
@@ -91,6 +91,9 @@ export default function TimesheetMatrix() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingWeek, setIsLoadingWeek] = useState(false);
+  
+  // Track pending updates to prevent race conditions
+  const pendingUpdatesRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   // Initialize current week and load projects
   useEffect(() => {
@@ -117,6 +120,13 @@ export default function TimesheetMatrix() {
     };
     
     initializeData();
+    
+    // Cleanup pending timeouts on unmount
+    return () => {
+      Object.values(pendingUpdatesRef.current).forEach(timeout => {
+        clearTimeout(timeout);
+      });
+    };
   }, []);
 
   const loadProjects = async () => {
@@ -265,93 +275,105 @@ export default function TimesheetMatrix() {
     }
   };
 
-  const updateTaskHours = async (taskId: string, date: string, hours: number) => {
-    try {
-      const task = taskRows.find(t => t.id === taskId);
-      if (!task) return;
+  const updateTaskHours = (taskId: string, date: string, hours: number) => {
+    const task = taskRows.find(t => t.id === taskId);
+    if (!task) return;
 
-      const oldHours = task.hours[date] || 0;
-      const difference = hours - oldHours;
+    const oldHours = task.hours[date] || 0;
+    if (hours === oldHours) return; // No change
 
-      if (difference === 0) return; // No change
-
-      // Update local state first
-      const updatedTaskRows = taskRows.map(t => {
-        if (t.id === taskId) {
-          const newHours = { ...t.hours };
-          if (hours === 0) {
-            delete newHours[date];
-          } else {
-            newHours[date] = hours;
-          }
-          const newTotalHours = Object.values(newHours).reduce((sum, h) => sum + h, 0);
-          return { ...t, hours: newHours, totalHours: newTotalHours };
-        }
-        return t;
-      });
-      setTaskRows(updatedTaskRows);
-
-      // Update database
-      if (hours === 0) {
-        // Delete existing entry if hours is 0
-        const response = await fetch(`/api/entries?startDate=${date}&endDate=${date}`);
-        const entries = await response.json();
-        const existingEntry = entries.find((e: TimeEntry) => 
-          e.project === task.project && e.description === task.description && e.date === date
-        );
-        
-        if (existingEntry) {
-          await fetch(`/api/entries/${existingEntry.id}`, { method: 'DELETE' });
-        }
-      } else {
-        // Create or update entry
-        const response = await fetch(`/api/entries?startDate=${date}&endDate=${date}`);
-        const entries = await response.json();
-        const existingEntry = entries.find((e: TimeEntry) => 
-          e.project === task.project && e.description === task.description && e.date === date
-        );
-        
-        if (existingEntry) {
-          // Update existing entry
-          await fetch(`/api/entries/${existingEntry.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              project: task.project,
-              description: task.description,
-              hours 
-            })
-          });
+    // Update local state immediately for responsive UI
+    const updatedTaskRows = taskRows.map(t => {
+      if (t.id === taskId) {
+        const newHours = { ...t.hours };
+        if (hours === 0) {
+          delete newHours[date];
         } else {
-          // Create new entry
-          await fetch('/api/entries', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              project: task.project,
-              description: task.description,
-              hours,
-              date
-            })
+          newHours[date] = hours;
+        }
+        const newTotalHours = Object.values(newHours).reduce((sum, h) => sum + h, 0);
+        return { ...t, hours: newHours, totalHours: newTotalHours };
+      }
+      return t;
+    });
+    setTaskRows(updatedTaskRows);
+
+    // Debounce the database update
+    const updateKey = `${taskId}-${date}`;
+    
+    // Clear any pending update for this task-date combination
+    if (pendingUpdatesRef.current[updateKey]) {
+      clearTimeout(pendingUpdatesRef.current[updateKey]);
+    }
+
+    // Schedule the database update
+    pendingUpdatesRef.current[updateKey] = setTimeout(async () => {
+      try {
+        // Update database
+        if (hours === 0) {
+          // Delete existing entry if hours is 0
+          const response = await fetch(`/api/entries?startDate=${date}&endDate=${date}`);
+          const entries = await response.json();
+          const existingEntry = entries.find((e: TimeEntry) => 
+            e.project === task.project && e.description === task.description && e.date === date
+          );
+          
+          if (existingEntry) {
+            await fetch(`/api/entries/${existingEntry.id}`, { method: 'DELETE' });
+          }
+        } else {
+          // Create or update entry
+          const response = await fetch(`/api/entries?startDate=${date}&endDate=${date}`);
+          const entries = await response.json();
+          const existingEntry = entries.find((e: TimeEntry) => 
+            e.project === task.project && e.description === task.description && e.date === date
+          );
+          
+          if (existingEntry) {
+            // Update existing entry
+            await fetch(`/api/entries/${existingEntry.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                project: task.project,
+                description: task.description,
+                hours 
+              })
+            });
+          } else {
+            // Create new entry
+            await fetch('/api/entries', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                project: task.project,
+                description: task.description,
+                hours,
+                date
+              })
+            });
+          }
+        }
+        
+        // Clean up the pending update reference
+        delete pendingUpdatesRef.current[updateKey];
+        
+        // Show success feedback for hour updates
+        if (hours > 0) {
+          toast.success('Hours saved', {
+            description: `${hours}h logged for ${task.description}`,
+            duration: 2000
           });
         }
+      } catch (error) {
+        console.error('Error updating task hours:', error);
+        toast.error('Failed to update hours. Please try again.');
+        // Reload data on error to sync with database
+        if (currentWeek) {
+          loadWeekData(currentWeek);
+        }
       }
-      
-      // Show success feedback for hour updates
-      if (hours > 0) {
-        toast.success('Hours updated', {
-          description: `${hours}h logged for ${task.description}`,
-          duration: 2000
-        });
-      }
-    } catch (error) {
-      console.error('Error updating task hours:', error);
-      toast.error('Failed to update hours. Please try again.');
-      // Reload data on error to sync with database
-      if (currentWeek) {
-        loadWeekData(currentWeek);
-      }
-    }
+    }, 500); // 500ms debounce delay
   };
 
   const deleteTask = async (taskId: string) => {
