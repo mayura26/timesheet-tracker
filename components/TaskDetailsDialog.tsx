@@ -461,14 +461,22 @@ export default function TaskDetailsDialog({
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium">Work Completion</label>
                     <span className="text-sm text-muted-foreground">
-                      {((checklist.filter(item => item.checked).length / checklist.length) * 100).toFixed(0)}%
+                      {(() => {
+                        const totalHours = checklist.reduce((sum, item) => sum + item.hours, 0);
+                        const completedHours = checklist.filter(item => item.checked).reduce((sum, item) => sum + item.hours, 0);
+                        return totalHours > 0 ? ((completedHours / totalHours) * 100).toFixed(0) : '0';
+                      })()}%
                     </span>
                   </div>
                   <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
                     <div
                       className="h-full bg-blue-500 transition-all duration-300"
                       style={{ 
-                        width: `${(checklist.filter(item => item.checked).length / checklist.length) * 100}%` 
+                        width: `${(() => {
+                          const totalHours = checklist.reduce((sum, item) => sum + item.hours, 0);
+                          const completedHours = checklist.filter(item => item.checked).reduce((sum, item) => sum + item.hours, 0);
+                          return totalHours > 0 ? (completedHours / totalHours) * 100 : 0;
+                        })()}%` 
                       }}
                     ></div>
                   </div>

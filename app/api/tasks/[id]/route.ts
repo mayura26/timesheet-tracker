@@ -7,23 +7,25 @@ function calculateCompletionPercentage(notes: string): number | undefined {
   if (!notes) return undefined;
   
   const lines = notes.split('\n');
-  let totalTasks = 0;
-  let completedTasks = 0;
+  let totalHours = 0;
+  let completedHours = 0;
   
   lines.forEach((line) => {
     const uncheckedMatch = line.match(/^- \[ \] (.+?)(?:\s*\(([0-9.]+)h\))?$/);
     const checkedMatch = line.match(/^- \[x\] (.+?)(?:\s*\(([0-9.]+)h\))?$/i);
     
     if (uncheckedMatch) {
-      totalTasks++;
+      const hours = uncheckedMatch[2] ? parseFloat(uncheckedMatch[2]) : 0;
+      totalHours += hours;
     } else if (checkedMatch) {
-      totalTasks++;
-      completedTasks++;
+      const hours = checkedMatch[2] ? parseFloat(checkedMatch[2]) : 0;
+      totalHours += hours;
+      completedHours += hours;
     }
   });
   
-  if (totalTasks === 0) return undefined;
-  return (completedTasks / totalTasks) * 100;
+  if (totalHours === 0) return undefined;
+  return (completedHours / totalHours) * 100;
 }
 
 // GET /api/tasks/[id] - Get a specific task with billed hours
