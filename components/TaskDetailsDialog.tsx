@@ -374,7 +374,7 @@ export default function TaskDetailsDialog({
     const hoursArray = new Array(numTasks).fill(safeBase);
     
     // Calculate current total and difference from budget
-    let currentTotal = safeBase * numTasks;
+    const currentTotal = safeBase * numTasks;
     let difference = totalBudget - currentTotal;
     
     // Distribute the difference in 0.5h increments
