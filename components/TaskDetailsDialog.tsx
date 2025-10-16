@@ -84,6 +84,7 @@ export default function TaskDetailsDialog({
   const [showAddItem, setShowAddItem] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const [autoSaving, setAutoSaving] = useState(false);
+  const [hideCompleted, setHideCompleted] = useState(false);
   const newItemInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -586,19 +587,47 @@ export default function TaskDetailsDialog({
                       </span>
                     )}
                   </label>
-                  {checklist.length > 0 && formData.budgeted_hours > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => autoSplitHours()}
-                      className="text-xs px-2 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded transition-colors flex items-center gap-1"
-                      title="Evenly distribute budgeted hours across all subtasks"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18"/>
-                      </svg>
-                      Auto Split
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {checklist.some(item => item.checked) && (
+                      <button
+                        type="button"
+                        onClick={() => setHideCompleted(!hideCompleted)}
+                        className="text-xs px-2 py-1 bg-muted hover:bg-muted/80 rounded transition-colors flex items-center gap-1"
+                        title={hideCompleted ? "Show completed subtasks" : "Hide completed subtasks"}
+                      >
+                        {hideCompleted ? (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                              <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                            Show Completed
+                          </>
+                        ) : (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                              <line x1="1" y1="1" x2="23" y2="23"></line>
+                            </svg>
+                            Hide Completed
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {checklist.length > 0 && formData.budgeted_hours > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => autoSplitHours()}
+                        className="text-xs px-2 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 rounded transition-colors flex items-center gap-1"
+                        title="Evenly distribute budgeted hours across all subtasks"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18"/>
+                        </svg>
+                        Auto Split
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="space-y-2 mb-4">
@@ -608,7 +637,7 @@ export default function TaskDetailsDialog({
                     </p>
                   )}
                   
-                  {checklist.map((item) => (
+                  {checklist.filter(item => !hideCompleted || !item.checked).map((item) => (
                     <div key={item.id} className="flex items-start gap-2 group p-2 rounded hover:bg-muted/50 transition-colors">
                       <input
                         type="checkbox"
@@ -713,6 +742,9 @@ export default function TaskDetailsDialog({
                   <div className="text-xs text-muted-foreground flex items-center justify-between">
                     <span>
                       {checklist.filter(item => item.checked).length} of {checklist.length} completed
+                      {hideCompleted && checklist.some(item => item.checked) && (
+                        <span className="ml-1 text-primary">({checklist.filter(item => item.checked).length} hidden)</span>
+                      )}
                     </span>
                     <span>
                       Total: {checklist.reduce((sum, item) => sum + item.hours, 0).toFixed(1)}h
