@@ -463,16 +463,19 @@ export default function ReportsPage() {
                   {Object.keys(report.dailyBreakdown).length > 0 || true ? (
                     <div className="space-y-3">
                       {/* Day of week headers */}
-                      <div className="grid grid-cols-7 gap-2">
+                      <div className="grid grid-cols-8 gap-2">
                         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
                           <div key={day} className="text-center text-sm font-semibold text-muted-foreground py-2">
                             {day}
                           </div>
                         ))}
+                        <div key="Week" className="text-center text-sm font-semibold py-2 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-lg border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+                          Week
+                        </div>
                       </div>
                       
                       {/* Calendar grid */}
-                      <div className="grid grid-cols-7 gap-2">
+                      <div className="space-y-2">
                         {(() => {
                           const firstDay = new Date(selectedYear, selectedMonth - 1, 1);
                           const lastDay = getDaysInMonth(selectedYear, selectedMonth);
@@ -481,11 +484,13 @@ export default function ReportsPage() {
                           // Convert to Monday = 0, Sunday = 6
                           firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
                           
-                          const cells = [];
+                          const weeks = [];
+                          let currentWeek = [];
+                          let weekHours = 0;
                           
                           // Add empty cells for days before the first of the month
                           for (let i = 0; i < firstDayOfWeek; i++) {
-                            cells.push(
+                            currentWeek.push(
                               <div key={`empty-${i}`} className="p-3 rounded-lg border border-transparent"></div>
                             );
                           }
@@ -494,6 +499,7 @@ export default function ReportsPage() {
                           for (let day = 1; day <= lastDay; day++) {
                             const date = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                             const hours = report.dailyBreakdown[date] || 0;
+                            weekHours += hours;
                             
                             const today = new Date();
                             const todayString = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
@@ -504,7 +510,7 @@ export default function ReportsPage() {
                             const dayOfWeek = currentDate.getDay();
                             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
                             
-                            cells.push(
+                            currentWeek.push(
                               <div
                                 key={day}
                                 className={`p-3 rounded-lg border text-center transition-all ${
@@ -523,9 +529,45 @@ export default function ReportsPage() {
                                 </div>
                               </div>
                             );
+                            
+                            // If it's Sunday (end of week) or the last day of the month
+                            if (dayOfWeek === 0 || day === lastDay) {
+                              // Fill remaining cells if needed (for the last week)
+                              while (currentWeek.length < 7) {
+                                currentWeek.push(
+                                  <div key={`empty-end-${currentWeek.length}`} className="p-3 rounded-lg border border-transparent"></div>
+                                );
+                              }
+                              
+                              // Add weekly summary cell
+                              currentWeek.push(
+                                <div
+                                  key={`week-summary-${weeks.length}`}
+                                  className="p-3 rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 dark:border-blue-800 text-center shadow-sm"
+                                >
+                                  <div className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                                    {weekHours.toFixed(1)}h
+                                  </div>
+                                  <div className="text-xs mt-1 font-medium text-blue-600 dark:text-blue-400">
+                                    {formatCurrency(weekHours)}
+                                  </div>
+                                </div>
+                              );
+                              
+                              // Add the completed week to weeks array
+                              weeks.push(
+                                <div key={`week-${weeks.length}`} className="grid grid-cols-8 gap-2">
+                                  {currentWeek}
+                                </div>
+                              );
+                              
+                              // Reset for next week
+                              currentWeek = [];
+                              weekHours = 0;
+                            }
                           }
                           
-                          return cells;
+                          return weeks;
                         })()}
                       </div>
                     </div>
