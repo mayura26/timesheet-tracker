@@ -17,21 +17,21 @@ export default function Navigation() {
 
   return (
     <nav className="border-b border-border bg-card">
-      <div className="container mx-auto px-4">
+      <div className="container mx-auto px-2 sm:px-4">
         <div className="flex justify-between items-center">
-          <div className="flex space-x-8">
+          <div className="flex space-x-2 sm:space-x-8">
             {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`py-4 px-2 text-sm font-medium border-b-2 transition-colors ${
+                className={`py-3 sm:py-4 px-1 sm:px-2 text-xs sm:text-sm font-medium border-b-2 transition-colors ${
                   pathname === item.href
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                 }`}
               >
-                <span className="mr-2">{item.icon}</span>
-                {item.label}
+                <span className="mr-1 sm:mr-2 text-sm sm:text-base">{item.icon}</span>
+                <span className="hidden sm:inline">{item.label}</span>
               </Link>
             ))}
           </div>
@@ -39,7 +39,7 @@ export default function Navigation() {
             variant="outline"
             size="sm"
             onClick={logout}
-            className="ml-4"
+            className="ml-2 sm:ml-4 text-xs sm:text-sm px-2 sm:px-3"
           >
             Logout
           </Button>

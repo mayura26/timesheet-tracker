@@ -675,16 +675,16 @@ export default function TimesheetMatrix() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Week Navigation */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <button
           onClick={() => navigateWeek('prev')}
           disabled={isLoadingWeek}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full sm:w-auto px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
           {isLoadingWeek ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
               Loading...
             </div>
@@ -693,17 +693,17 @@ export default function TimesheetMatrix() {
           )}
         </button>
         
-        <h2 className="text-xl font-semibold">
+        <h2 className="text-lg md:text-xl font-semibold text-center">
           Week of {formatDate(currentWeek.weekStart)}
         </h2>
         
         <button
           onClick={() => navigateWeek('next')}
           disabled={isLoadingWeek}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full sm:w-auto px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
         >
           {isLoadingWeek ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
               Loading...
             </div>
@@ -715,92 +715,131 @@ export default function TimesheetMatrix() {
 
       {/* Task-based Timesheet Matrix */}
       <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="grid grid-cols-8 gap-0">
-          {/* Header Row */}
-          <div className="bg-muted p-4 font-semibold border-r border-border">
-            <div className="flex items-center justify-between">
-              <span>Tasks</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={copyFromLastWeek}
-                  className="text-xs px-2 py-1 border border-border rounded hover:bg-muted transition-colors flex items-center gap-1"
-                  title="Copy tasks from last week"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                  Copy
-                </button>
-                <button
-                  onClick={() => setShowAddTask(true)}
-                  className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90"
-                >
-                  + Add Task
-                </button>
-              </div>
+        {/* Mobile Action Buttons Header */}
+        <div className="block sm:hidden p-3 border-b border-border bg-muted/50">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-sm">Tasks</span>
+            <div className="flex gap-2">
+              <button
+                onClick={copyFromLastWeek}
+                className="text-xs px-2 py-1 border border-border rounded hover:bg-muted transition-colors flex items-center gap-1"
+                title="Copy tasks from last week"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy
+              </button>
+              <button
+                onClick={() => setShowAddTask(true)}
+                className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+              >
+                + Add
+              </button>
             </div>
           </div>
-          {currentWeek.days.map((day) => {
-            const isTodayDay = isToday(day.date);
-            return (
-              <div 
-                key={day.date} 
-                className={`p-4 font-semibold text-center border-r border-border last:border-r-0 ${
-                  isTodayDay 
-                    ? 'bg-primary/20 border-2 border-primary ring-2 ring-primary/30' 
-                    : 'bg-muted'
-                }`}
-              >
-                <div className={`text-sm ${isTodayDay ? 'text-primary font-bold' : ''}`}>
-                  {getDayName(day.date)}
-                  {isTodayDay && ' (Today)'}
-                </div>
-                <div className={`text-xs ${isTodayDay ? 'text-primary font-semibold' : 'text-muted-foreground'}`}>
-                  {formatDate(day.date)}
+        </div>
+
+        {/* Responsive Grid Container with Horizontal Scroll */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[640px] sm:min-w-0 grid grid-cols-8 gap-0">
+            {/* Header Row */}
+            <div className="bg-muted p-3 sm:p-4 font-semibold border-r border-border">
+              <div className="hidden sm:flex items-center justify-between">
+                <span>Tasks</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={copyFromLastWeek}
+                    className="text-xs px-2 py-1 border border-border rounded hover:bg-muted transition-colors flex items-center gap-1"
+                    title="Copy tasks from last week"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    Copy
+                  </button>
+                  <button
+                    onClick={() => setShowAddTask(true)}
+                    className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                  >
+                    + Add Task
+                  </button>
                 </div>
               </div>
-            );
-          })}
+              <div className="block sm:hidden text-sm">
+                Tasks
+              </div>
+            </div>
+            
+            {/* Day Headers */}
+            {currentWeek.days.map((day) => {
+              const isTodayDay = isToday(day.date);
+              return (
+                <div 
+                  key={day.date} 
+                  className={`p-3 sm:p-4 font-semibold text-center border-r border-border last:border-r-0 ${
+                    isTodayDay 
+                      ? 'bg-primary/20 border-2 border-primary ring-2 ring-primary/30' 
+                      : 'bg-muted'
+                  }`}
+                >
+                  <div className={`text-xs sm:text-sm ${isTodayDay ? 'text-primary font-bold' : ''}`}>
+                    <span className="sm:hidden">{getDayName(day.date).substring(0, 3)}</span>
+                    <span className="hidden sm:inline">{getDayName(day.date)}</span>
+                    {isTodayDay && (
+                      <>
+                        <span className="sm:hidden"> (T)</span>
+                        <span className="hidden sm:inline"> (Today)</span>
+                      </>
+                    )}
+                  </div>
+                  <div className={`text-xs ${isTodayDay ? 'text-primary font-semibold' : 'text-muted-foreground'}`}>
+                    {formatDate(day.date)}
+                  </div>
+                </div>
+              );
+            })}
           
-          {/* Task Rows */}
-          {taskRows.map((task) => (
-            <div key={task.id} className="contents">
-              {/* Task Info */}
-              <div className="bg-background p-4 border-r border-border border-t">
+            {/* Task Rows */}
+            {taskRows.map((task) => (
+              <>
+                {/* Task Info */}
+                <div key={`${task.id}-info`} className="bg-background p-3 sm:p-4 border-r border-border border-t">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <div
-                      className="w-3 h-3 rounded-full"
+                      className="w-2 h-2 sm:w-3 sm:h-3 rounded-full"
                       style={{ backgroundColor: getProjectColor(task.project) }}
                     ></div>
-                    <span className="font-medium text-sm">{task.project}</span>
+                    <span className="font-medium text-xs sm:text-sm">{task.project}</span>
                     {task.completion_percentage !== undefined && (
-                      <div className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                      <div className="text-xs font-medium px-1 sm:px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                         {task.completion_percentage.toFixed(0)}%
                       </div>
                     )}
                   </div>
                   <button
                     onClick={() => deleteTask(task.id)}
-                    className="text-muted-foreground hover:text-destructive transition-colors p-1 rounded-sm hover:bg-muted"
+                    className="text-muted-foreground hover:text-destructive transition-colors p-0.5 sm:p-1 rounded-sm hover:bg-muted"
                     title="Delete task"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="12" height="12" className="sm:w-3.5 sm:h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 6L6 18M6 6l12 12"/>
                     </svg>
                   </button>
                 </div>
                 <button
                   onClick={() => setSelectedTask({ id: task.id, project: task.project, description: task.description })}
-                  className="w-full text-left hover:bg-muted/50 -mx-2 px-2 py-1 rounded transition-colors"
+                  className="w-full text-left hover:bg-muted/50 -mx-1 sm:-mx-2 px-1 sm:px-2 py-0.5 sm:py-1 rounded transition-colors"
                   title="Click to view task details and budget"
                 >
-                  <div className="text-xs text-muted-foreground mb-2">{task.description}</div>
+                  <div className="text-xs text-muted-foreground mb-1 sm:mb-2 line-clamp-2">{task.description}</div>
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-medium text-primary">Total: {task.totalHours.toFixed(1)}h</div>
                     {task.budgeted_hours !== undefined && task.budgeted_hours > 0 && (
-                      <div className={`text-xs font-medium px-2 py-0.5 rounded-full ${getRemainingHoursBadgeColor(task)}`}>
+                      <div className={`text-xs font-medium px-1 sm:px-2 py-0.5 rounded-full ${getRemainingHoursBadgeColor(task)}`}>
                         {task.hours_remaining! >= 0 ? `${task.hours_remaining!.toFixed(1)}h left` : `${Math.abs(task.hours_remaining!).toFixed(1)}h over`}
                       </div>
                     )}
@@ -814,7 +853,7 @@ export default function TimesheetMatrix() {
                 return (
                   <div 
                     key={`${task.id}-${day.date}`} 
-                    className={`p-2 border-r border-t border-border last:border-r-0 ${
+                    className={`p-1 sm:p-2 border-r border-t border-border last:border-r-0 min-w-[80px] sm:min-w-0 ${
                       isTodayDay ? 'bg-primary/5' : 'bg-background'
                     }`}
                   >
@@ -828,7 +867,7 @@ export default function TimesheetMatrix() {
                         const hours = parseFloat(e.target.value) || 0;
                         updateTaskHours(task.id, day.date, hours);
                       }}
-                      className={`w-full p-1 text-center text-sm border rounded focus:outline-none ${
+                      className={`w-full p-1 text-center text-xs sm:text-sm border rounded focus:outline-none ${
                         isTodayDay 
                           ? 'border-primary/40 bg-background/95 focus:border-primary focus:ring-1 focus:ring-primary/20' 
                           : 'border-border bg-background focus:border-primary'
@@ -838,64 +877,66 @@ export default function TimesheetMatrix() {
                   </div>
                 );
               })}
-            </div>
-          ))}
-          
-          {/* Empty state */}
-          {taskRows.length === 0 && (
-            <div className="col-span-8 bg-background p-8 text-center border-t border-border">
-              <p className="text-muted-foreground mb-4">No tasks added for this week</p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => setShowAddTask(true)}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
-                >
-                  Add Your First Task
-                </button>
-                <button
-                  onClick={copyFromLastWeek}
-                  className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors flex items-center gap-2"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                  Copy from Last Week
-                </button>
-              </div>
-            </div>
-          )}
-          
-          {/* Daily Totals Row */}
-          {taskRows.length > 0 && (
-            <div className="contents">
-              <div className="bg-primary/5 p-4 border-r border-border border-t-2 border-t-border font-semibold">
-                Daily Totals
-              </div>
-              {currentWeek.days.map((day) => {
-                const isTodayDay = isToday(day.date);
-                return (
-                  <div 
-                    key={`total-${day.date}`} 
-                    className={`p-4 text-center border-r border-border border-t-2 border-t-border last:border-r-0 ${
-                      isTodayDay ? 'bg-primary/15' : 'bg-primary/5'
-                    }`}
+              </>
+            ))}
+            
+            {/* Empty state */}
+            {taskRows.length === 0 && (
+              <div className="col-span-8 bg-background p-6 sm:p-8 text-center border-t border-border">
+                <p className="text-muted-foreground mb-4 text-sm sm:text-base">No tasks added for this week</p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    onClick={() => setShowAddTask(true)}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm sm:text-base"
                   >
-                    <span className="text-sm font-bold text-primary">
-                      {dailyTotals[day.date] > 0 ? `${dailyTotals[day.date].toFixed(1)}h` : '-'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                    Add Your First Task
+                  </button>
+                  <button
+                    onClick={copyFromLastWeek}
+                    className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    Copy from Last Week
+                  </button>
+                </div>
+              </div>
+            )}
+        
+            
+            {/* Daily Totals Row */}
+            {taskRows.length > 0 && (
+              <>
+                <div className="bg-primary/5 p-3 sm:p-4 border-r border-border border-t-2 border-t-border font-semibold">
+                  <span className="text-xs sm:text-sm">Daily Totals</span>
+                </div>
+                {currentWeek.days.map((day) => {
+                  const isTodayDay = isToday(day.date);
+                  return (
+                    <div 
+                      key={`total-${day.date}`} 
+                      className={`p-3 sm:p-4 text-center border-r border-border border-t-2 border-t-border last:border-r-0 ${
+                        isTodayDay ? 'bg-primary/15' : 'bg-primary/5'
+                      }`}
+                    >
+                      <span className="text-xs sm:text-sm font-bold text-primary">
+                        {dailyTotals[day.date] > 0 ? `${dailyTotals[day.date].toFixed(1)}h` : '-'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
         </div>
         
         {/* Week Total */}
-        <div className="bg-primary/10 p-4 border-t border-border">
+        <div className="bg-primary/10 p-3 md:p-4 border-t border-border">
           <div className="flex justify-between items-center">
-            <span className="font-semibold">Week Total</span>
-            <span className="text-2xl font-bold text-primary">{weekTotal.toFixed(1)} hours</span>
+            <span className="font-semibold text-sm md:text-base">Week Total</span>
+            <span className="text-lg md:text-2xl font-bold text-primary">{weekTotal.toFixed(1)} hours</span>
           </div>
         </div>
       </div>
