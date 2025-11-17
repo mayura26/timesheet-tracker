@@ -85,6 +85,8 @@ export default function TaskDetailsDialog({
   const [newItemText, setNewItemText] = useState('');
   const [autoSaving, setAutoSaving] = useState(false);
   const [hideCompleted, setHideCompleted] = useState(false);
+  const [showBulkAdd, setShowBulkAdd] = useState(false);
+  const [bulkAddText, setBulkAddText] = useState('');
   const newItemInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -288,6 +290,43 @@ export default function TaskDetailsDialog({
     });
     setNewItemText('');
     setShowAddItem(false);
+  };
+
+  const handleBulkAdd = () => {
+    if (!bulkAddText.trim()) {
+      toast.error('Please enter at least one subtask');
+      return;
+    }
+
+    // Split by newlines and filter out empty lines
+    const lines = bulkAddText.split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    if (lines.length === 0) {
+      toast.error('No valid subtasks found');
+      return;
+    }
+
+    // Create new checklist items from the lines
+    const newItems: ChecklistItem[] = lines.map((line, index) => ({
+      id: `item-${Date.now()}-${index}`,
+      text: line,
+      checked: false,
+      hours: 0,
+      lineIndex: checklist.length + index
+    }));
+
+    setChecklist(prev => {
+      const updated = [...prev, ...newItems];
+      // Immediate auto-save for bulk added items
+      autoSave(updated, regularNotes);
+      return updated;
+    });
+
+    setBulkAddText('');
+    setShowBulkAdd(false);
+    toast.success(`Added ${newItems.length} subtask${newItems.length > 1 ? 's' : ''}`);
   };
 
   const handleAddItemKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -588,6 +627,17 @@ export default function TaskDetailsDialog({
                     )}
                   </label>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowBulkAdd(true)}
+                      className="text-xs px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded transition-colors flex items-center gap-1"
+                      title="Bulk add multiple subtasks"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 5v14M5 12h14"/>
+                      </svg>
+                      Bulk Add
+                    </button>
                     {checklist.some(item => item.checked) && (
                       <button
                         type="button"
@@ -808,6 +858,62 @@ export default function TaskDetailsDialog({
           </div>
         )}
       </div>
+
+      {/* Bulk Add Dialog */}
+      {showBulkAdd && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-[60]">
+          <div className="bg-card rounded-lg p-6 w-full max-w-lg mx-4">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Bulk Add Subtasks</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Paste multiple subtasks, one per line
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowBulkAdd(false);
+                  setBulkAddText('');
+                }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <textarea
+              value={bulkAddText}
+              onChange={(e) => setBulkAddText(e.target.value)}
+              className="w-full p-3 border border-border rounded-md bg-background h-48 resize-none font-mono text-sm"
+              placeholder="Subtask 1&#10;Subtask 2&#10;Subtask 3&#10;..."
+              autoFocus
+            />
+
+            <div className="flex gap-3 justify-end mt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBulkAdd(false);
+                  setBulkAddText('');
+                }}
+                className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkAdd}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+              >
+                Add Subtasks
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
