@@ -22,7 +22,7 @@ export default function ReportsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState('statement');
-  const [isSummaryView, setIsSummaryView] = useState(false);
+  const [isSummaryView, setIsSummaryView] = useState(true);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [selectedTask, setSelectedTask] = useState<{ id: string; project: string; description: string } | null>(null);
 
