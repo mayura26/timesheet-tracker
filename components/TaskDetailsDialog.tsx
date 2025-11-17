@@ -3,6 +3,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Task } from '@/lib/schema';
 import { toast } from 'sonner';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface ChecklistItem {
   id: string;
@@ -64,6 +81,94 @@ interface TaskDetailsDialogProps {
   onUpdate: () => void;
 }
 
+// SortableItem component for drag-and-drop
+interface SortableItemProps {
+  item: ChecklistItem;
+  onToggle: (id: string) => void;
+  onTextChange: (id: string, text: string) => void;
+  onHoursChange: (id: string, hours: number) => void;
+  onRemove: (id: string) => void;
+}
+
+function SortableItem({ item, onToggle, onTextChange, onHoursChange, onRemove }: SortableItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-start gap-2 group p-2 rounded hover:bg-muted/50 transition-colors"
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="mt-1 cursor-grab active:cursor-grabbing flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+        title="Drag to reorder"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="12" r="1"></circle>
+          <circle cx="9" cy="5" r="1"></circle>
+          <circle cx="9" cy="19" r="1"></circle>
+          <circle cx="15" cy="12" r="1"></circle>
+          <circle cx="15" cy="5" r="1"></circle>
+          <circle cx="15" cy="19" r="1"></circle>
+        </svg>
+      </div>
+      <input
+        type="checkbox"
+        checked={item.checked}
+        onChange={() => onToggle(item.id)}
+        className="mt-1 w-4 h-4 cursor-pointer flex-shrink-0"
+      />
+      <input
+        type="text"
+        value={item.text}
+        onChange={(e) => onTextChange(item.id, e.target.value)}
+        className={`flex-1 bg-transparent border-none outline-none text-sm ${
+          item.checked ? 'line-through text-muted-foreground' : ''
+        }`}
+        placeholder="Subtask description"
+      />
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <input
+          type="number"
+          step="0.5"
+          min="0"
+          value={item.hours}
+          onChange={(e) => onHoursChange(item.id, parseFloat(e.target.value) || 0)}
+          className="w-16 px-2 py-1 text-xs border border-border rounded bg-background text-right"
+          placeholder="0"
+        />
+        <span className="text-xs text-muted-foreground">h</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(item.id)}
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity flex-shrink-0"
+        title="Remove item"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export default function TaskDetailsDialog({ 
   taskId, 
   projectName, 
@@ -89,6 +194,18 @@ export default function TaskDetailsDialog({
   const [bulkAddText, setBulkAddText] = useState('');
   const newItemInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     loadTaskDetails();
@@ -269,6 +386,22 @@ export default function TaskDetailsDialog({
       autoSave(updated, regularNotes);
       return updated;
     });
+  };
+
+  // Handle drag end event for reordering
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setChecklist((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        const updated = arrayMove(items, oldIndex, newIndex);
+        // Auto-save the new order
+        autoSave(updated, regularNotes);
+        return updated;
+      });
+    }
   };
 
   const addChecklistItem = () => {
@@ -734,48 +867,29 @@ export default function TaskDetailsDialog({
                     </p>
                   )}
                   
-                  {checklist.filter(item => !hideCompleted || !item.checked).map((item) => (
-                    <div key={item.id} className="flex items-start gap-2 group p-2 rounded hover:bg-muted/50 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={() => toggleChecklistItem(item.id)}
-                        className="mt-1 w-4 h-4 cursor-pointer flex-shrink-0"
-                      />
-                      <input
-                        type="text"
-                        value={item.text}
-                        onChange={(e) => updateChecklistItemText(item.id, e.target.value)}
-                        className={`flex-1 bg-transparent border-none outline-none text-sm ${
-                          item.checked ? 'line-through text-muted-foreground' : ''
-                        }`}
-                        placeholder="Subtask description"
-                      />
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          value={item.hours}
-                          onChange={(e) => updateChecklistItemHours(item.id, parseFloat(e.target.value) || 0)}
-                          className="w-16 px-2 py-1 text-xs border border-border rounded bg-background text-right"
-                          placeholder="0"
-                        />
-                        <span className="text-xs text-muted-foreground">h</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeChecklistItem(item.id)}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity flex-shrink-0"
-                        title="Remove item"
+                  {checklist.length > 0 && (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={checklist.filter(item => !hideCompleted || !item.checked).map(item => item.id)}
+                        strategy={verticalListSortingStrategy}
                       >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
+                        {checklist.filter(item => !hideCompleted || !item.checked).map((item) => (
+                          <SortableItem
+                            key={item.id}
+                            item={item}
+                            onToggle={toggleChecklistItem}
+                            onTextChange={updateChecklistItemText}
+                            onHoursChange={updateChecklistItemHours}
+                            onRemove={removeChecklistItem}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  )}
                   
                   {showAddItem && (
                     <div className="flex items-center gap-2 p-2 bg-muted/50 rounded">
