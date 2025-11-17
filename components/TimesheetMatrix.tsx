@@ -100,6 +100,8 @@ export default function TimesheetMatrix() {
   
   // Track pending updates to prevent race conditions
   const pendingUpdatesRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
+  // Track current task rows for use in async callbacks
+  const taskRowsRef = useRef<TaskRow[]>([]);
 
   // Initialize current week and load projects
   useEffect(() => {
@@ -240,9 +242,11 @@ export default function TimesheetMatrix() {
       });
       
       setTaskRows(updatedTasks);
+      taskRowsRef.current = updatedTasks;
     } catch (error) {
       console.error('Error loading task budgets:', error);
       setTaskRows(tasks); // Set tasks without budget data if fetch fails
+      taskRowsRef.current = tasks;
     }
   };
 
@@ -313,12 +317,14 @@ export default function TimesheetMatrix() {
         hours_remaining: budgetedHours || 0
       };
 
-      setTaskRows([...taskRows, newTask].sort((a, b) => {
+      const sortedTasks = [...taskRows, newTask].sort((a, b) => {
         if (a.project !== b.project) {
           return a.project.localeCompare(b.project);
         }
         return a.description.localeCompare(b.description);
-      }));
+      });
+      setTaskRows(sortedTasks);
+      taskRowsRef.current = sortedTasks;
 
       setShowAddTask(false);
       loadRecentDescriptions();
@@ -351,6 +357,7 @@ export default function TimesheetMatrix() {
       return t;
     });
     setTaskRows(updatedTaskRows);
+    taskRowsRef.current = updatedTaskRows;
 
     // Debounce the database update
     const updateKey = `${taskId}-${date}`;
@@ -412,6 +419,10 @@ export default function TimesheetMatrix() {
         // Clean up the pending update reference
         delete pendingUpdatesRef.current[updateKey];
         
+        // Refresh task budgets to update metrics (hours_remaining, hours_billed, etc.)
+        // Use ref to get the latest task rows state
+        await loadTaskBudgets(taskRowsRef.current);
+        
         // Show success feedback for hour updates
         if (hours > 0) {
           toast.success('Hours saved', {
@@ -465,7 +476,9 @@ export default function TimesheetMatrix() {
       }
 
       // Remove task from local state
-      setTaskRows(taskRows.filter(t => t.id !== taskId));
+      const filteredTasks = taskRows.filter(t => t.id !== taskId);
+      setTaskRows(filteredTasks);
+      taskRowsRef.current = filteredTasks;
       
       toast.success('Task deleted successfully', {
         id: 'delete-task',
@@ -557,6 +570,7 @@ export default function TimesheetMatrix() {
         });
         
         setTaskRows(updatedTaskRows);
+        taskRowsRef.current = updatedTaskRows;
         
         toast.success('Tasks copied successfully!', {
           id: 'copy-tasks',
@@ -648,11 +662,11 @@ export default function TimesheetMatrix() {
     return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
   };
 
-  const handleTaskDialogClose = () => {
+  const handleTaskDialogClose = async () => {
     setSelectedTask(null);
-    // Reload task budgets to reflect changes
+    // Reload week data and task budgets to reflect any changes
     if (currentWeek) {
-      loadWeekData(currentWeek);
+      await loadWeekData(currentWeek);
     }
   };
 
