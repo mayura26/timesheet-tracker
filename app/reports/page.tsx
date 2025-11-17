@@ -404,9 +404,16 @@ export default function ReportsPage() {
                   <div className="bg-card rounded-lg border border-border p-6">
                     <h3 className="text-sm font-medium text-muted-foreground">Average Daily</h3>
                     <p className="text-3xl font-bold text-foreground mt-2">
-                      {(report.totalHours / (Math.ceil(getDaysInMonth(selectedYear, selectedMonth) / 7) * 5)).toFixed(1)}h
+                      {(() => {
+                        const daysWithHours = Object.values(report.dailyBreakdown).filter(hours => hours > 0).length;
+                        return daysWithHours > 0 
+                          ? (report.totalHours / daysWithHours).toFixed(1)
+                          : '0.0';
+                      })()}h
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">5-day work week</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {Object.values(report.dailyBreakdown).filter(hours => hours > 0).length} days with hours logged
+                    </p>
                   </div>
                 </div>
 
@@ -616,9 +623,16 @@ export default function ReportsPage() {
                 <div className="bg-background rounded-lg border border-border p-4">
                   <h3 className="text-sm font-medium text-muted-foreground">Average Daily</h3>
                   <p className="text-2xl font-bold text-foreground mt-1">
-                    {(weeklySummary.totalHours / 5).toFixed(1)}h
+                    {(() => {
+                      const daysWithHours = Object.values(weeklySummary.dailyBreakdown).filter(hours => hours > 0).length;
+                      return daysWithHours > 0 
+                        ? (weeklySummary.totalHours / daysWithHours).toFixed(1)
+                        : '0.0';
+                    })()}h
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">5-day work week</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {Object.values(weeklySummary.dailyBreakdown).filter(hours => hours > 0).length} days with hours logged
+                  </p>
                 </div>
               </div>
 
