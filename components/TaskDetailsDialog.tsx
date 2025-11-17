@@ -207,11 +207,7 @@ export default function TaskDetailsDialog({
     })
   );
 
-  useEffect(() => {
-    loadTaskDetails();
-  }, [taskId]);
-
-  const loadTaskDetails = async () => {
+  const loadTaskDetails = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
@@ -260,7 +256,11 @@ export default function TaskDetailsDialog({
     } finally {
       setLoading(false);
     }
-  };
+  }, [taskId, projectName, description]);
+
+  useEffect(() => {
+    loadTaskDetails();
+  }, [loadTaskDetails]);
 
   const handleSave = async () => {
     if (!task) return;

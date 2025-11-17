@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { TimeEntry, DayData, WeekData, Project, Task } from '@/lib/schema';
 import { toast } from 'sonner';
 import TaskDetailsDialog from './TaskDetailsDialog';
@@ -103,74 +103,39 @@ export default function TimesheetMatrix() {
   // Track current task rows for use in async callbacks
   const taskRowsRef = useRef<TaskRow[]>([]);
 
-  // Initialize current week and load projects
-  useEffect(() => {
-    const initializeData = async () => {
-      setIsLoading(true);
-      const today = new Date();
-      const dayOfWeek = today.getDay();
-      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Monday is day 1
+  const loadTaskBudgets = useCallback(async (tasks: TaskRow[]) => {
+    try {
+      // Fetch all tasks from the database
+      const response = await fetch('/api/tasks');
+      if (!response.ok) return;
       
-      // Calculate start of week without using setDate to avoid timezone issues
-      const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysToMonday);
+      const tasksData: Task[] = await response.json();
       
-      const weekData = generateWeekData(startOfWeek);
-      setCurrentWeek(weekData);
-      
-      // Load all data in parallel
-      await Promise.all([
-        loadWeekData(weekData),
-        loadProjects(),
-        loadRecentDescriptions()
-      ]);
-      
-      setIsLoading(false);
-    };
-    
-    initializeData();
-    
-    // Cleanup pending timeouts on unmount
-    return () => {
-      Object.values(pendingUpdatesRef.current).forEach(timeout => {
-        clearTimeout(timeout);
+      // Map budget data to task rows
+      const updatedTasks = tasks.map(task => {
+        const taskData = tasksData.find(t => t.id === task.id);
+        if (taskData) {
+          return {
+            ...task,
+            budgeted_hours: taskData.budgeted_hours,
+            hours_billed: taskData.hours_billed,
+            hours_remaining: taskData.hours_remaining,
+            completion_percentage: taskData.completion_percentage
+          };
+        }
+        return task;
       });
-    };
+      
+      setTaskRows(updatedTasks);
+      taskRowsRef.current = updatedTasks;
+    } catch (error) {
+      console.error('Error loading task budgets:', error);
+      setTaskRows(tasks); // Set tasks without budget data if fetch fails
+      taskRowsRef.current = tasks;
+    }
   }, []);
 
-  const loadProjects = async () => {
-    try {
-      const response = await fetch('/api/projects?activeOnly=true');
-      const data = await response.json();
-      setProjects(data);
-    } catch (error) {
-      console.error('Error loading projects:', error);
-    }
-  };
-
-  const loadRecentDescriptions = async () => {
-    try {
-      // Get descriptions from the last 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const startDate = `${thirtyDaysAgo.getFullYear()}-${(thirtyDaysAgo.getMonth() + 1).toString().padStart(2, '0')}-${thirtyDaysAgo.getDate().toString().padStart(2, '0')}`;
-      const today = new Date();
-      const endDate = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
-      
-      const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
-      const entries = await response.json();
-      
-      // Extract unique descriptions, most recent first
-      const descriptions = [...new Set(entries.map((entry: TimeEntry) => entry.description))]
-        .filter((desc): desc is string => typeof desc === 'string' && desc.trim().length > 0)
-        .slice(0, 10); // Keep only the 10 most recent unique descriptions
-      
-      setRecentDescriptions(descriptions);
-    } catch (error) {
-      console.error('Error loading recent descriptions:', error);
-    }
-  };
-
-  const loadWeekData = async (weekData: WeekData) => {
+  const loadWeekData = useCallback(async (weekData: WeekData) => {
     try {
       const startDate = weekData.weekStart;
       const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
@@ -216,37 +181,74 @@ export default function TimesheetMatrix() {
     } catch (error) {
       console.error('Error loading week data:', error);
     }
+  }, [loadTaskBudgets]);
+
+  // Initialize current week and load projects
+  useEffect(() => {
+    const initializeData = async () => {
+      setIsLoading(true);
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Monday is day 1
+      
+      // Calculate start of week without using setDate to avoid timezone issues
+      const startOfWeek = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysToMonday);
+      
+      const weekData = generateWeekData(startOfWeek);
+      setCurrentWeek(weekData);
+      
+      // Load all data in parallel
+      await Promise.all([
+        loadWeekData(weekData),
+        loadProjects(),
+        loadRecentDescriptions()
+      ]);
+      
+      setIsLoading(false);
+    };
+    
+    initializeData();
+    
+    // Cleanup pending timeouts on unmount
+    return () => {
+      // We intentionally access .current here to get the latest ref value at cleanup time
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      Object.values(pendingUpdatesRef.current).forEach(timeout => {
+        clearTimeout(timeout);
+      });
+    };
+  }, [loadWeekData]);
+
+  const loadProjects = async () => {
+    try {
+      const response = await fetch('/api/projects?activeOnly=true');
+      const data = await response.json();
+      setProjects(data);
+    } catch (error) {
+      console.error('Error loading projects:', error);
+    }
   };
 
-  const loadTaskBudgets = async (tasks: TaskRow[]) => {
+  const loadRecentDescriptions = async () => {
     try {
-      // Fetch all tasks from the database
-      const response = await fetch('/api/tasks');
-      if (!response.ok) return;
+      // Get descriptions from the last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const startDate = `${thirtyDaysAgo.getFullYear()}-${(thirtyDaysAgo.getMonth() + 1).toString().padStart(2, '0')}-${thirtyDaysAgo.getDate().toString().padStart(2, '0')}`;
+      const today = new Date();
+      const endDate = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
       
-      const tasksData: Task[] = await response.json();
+      const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
+      const entries = await response.json();
       
-      // Map budget data to task rows
-      const updatedTasks = tasks.map(task => {
-        const taskData = tasksData.find(t => t.id === task.id);
-        if (taskData) {
-          return {
-            ...task,
-            budgeted_hours: taskData.budgeted_hours,
-            hours_billed: taskData.hours_billed,
-            hours_remaining: taskData.hours_remaining,
-            completion_percentage: taskData.completion_percentage
-          };
-        }
-        return task;
-      });
+      // Extract unique descriptions, most recent first
+      const descriptions = [...new Set(entries.map((entry: TimeEntry) => entry.description))]
+        .filter((desc): desc is string => typeof desc === 'string' && desc.trim().length > 0)
+        .slice(0, 10); // Keep only the 10 most recent unique descriptions
       
-      setTaskRows(updatedTasks);
-      taskRowsRef.current = updatedTasks;
+      setRecentDescriptions(descriptions);
     } catch (error) {
-      console.error('Error loading task budgets:', error);
-      setTaskRows(tasks); // Set tasks without budget data if fetch fails
-      taskRowsRef.current = tasks;
+      console.error('Error loading recent descriptions:', error);
     }
   };
 
