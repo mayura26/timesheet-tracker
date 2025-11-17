@@ -393,15 +393,50 @@ export default function TaskDetailsDialog({
     };
   }, []);
 
-  // Auto-split hours evenly across all subtasks with 0.5h minimum rounding
+  // Auto-split hours evenly across subtasks, respecting tasks that already have hours
   const autoSplitHours = () => {
     if (checklist.length === 0 || formData.budgeted_hours <= 0) return;
 
-    const numTasks = checklist.length;
     const totalBudget = formData.budgeted_hours;
     
-    // Calculate base hours per task
-    const baseHours = totalBudget / numTasks;
+    // Separate tasks into those with existing hours and those without
+    const tasksWithHours: { item: ChecklistItem; index: number }[] = [];
+    const tasksWithoutHours: { item: ChecklistItem; index: number }[] = [];
+    
+    checklist.forEach((item, index) => {
+      if (item.hours > 0) {
+        tasksWithHours.push({ item, index });
+      } else {
+        tasksWithoutHours.push({ item, index });
+      }
+    });
+    
+    // Calculate total hours already allocated
+    const allocatedHours = tasksWithHours.reduce((sum, { item }) => sum + item.hours, 0);
+    
+    // Calculate remaining hours to distribute
+    const remainingHours = totalBudget - allocatedHours;
+    
+    // If no tasks without hours, or remaining hours is negative/zero, just show a message
+    if (tasksWithoutHours.length === 0) {
+      toast.info('All subtasks already have hours allocated', {
+        description: `Total allocated: ${allocatedHours.toFixed(1)}h / ${totalBudget.toFixed(1)}h`,
+        duration: 2000
+      });
+      return;
+    }
+    
+    if (remainingHours <= 0) {
+      toast.warning('No remaining hours to distribute', {
+        description: `Allocated hours (${allocatedHours.toFixed(1)}h) exceed or equal budget (${totalBudget.toFixed(1)}h)`,
+        duration: 2000
+      });
+      return;
+    }
+    
+    // Calculate base hours per task without hours
+    const numTasksToSplit = tasksWithoutHours.length;
+    const baseHours = remainingHours / numTasksToSplit;
     
     // Round to nearest 0.5
     const roundToHalf = (num: number) => Math.round(num * 2) / 2;
@@ -410,12 +445,12 @@ export default function TaskDetailsDialog({
     // Ensure minimum of 0.5h per task
     const safeBase = Math.max(0.5, roundedBase);
     
-    // Start with all tasks getting the safe base amount
-    const hoursArray = new Array(numTasks).fill(safeBase);
+    // Start with all tasks without hours getting the safe base amount
+    const hoursArray = new Array(numTasksToSplit).fill(safeBase);
     
-    // Calculate current total and difference from budget
-    const currentTotal = safeBase * numTasks;
-    let difference = totalBudget - currentTotal;
+    // Calculate current total and difference from remaining budget
+    const currentTotal = safeBase * numTasksToSplit;
+    let difference = remainingHours - currentTotal;
     
     // Distribute the difference in 0.5h increments
     let taskIndex = 0;
@@ -431,7 +466,7 @@ export default function TaskDetailsDialog({
           difference += 0.5;
         }
       }
-      taskIndex = (taskIndex + 1) % numTasks;
+      taskIndex = (taskIndex + 1) % numTasksToSplit;
       
       // Safety check to prevent infinite loop
       if (Math.abs(difference) < 0.25) break;
@@ -439,17 +474,29 @@ export default function TaskDetailsDialog({
     
     // Apply the calculated hours to the checklist
     setChecklist(prev => {
-      const updated = prev.map((item, index) => ({
-        ...item,
-        hours: hoursArray[index]
-      }));
+      const updated = prev.map((item, index) => {
+        // Find if this task is in the tasksWithoutHours list
+        const taskWithoutHours = tasksWithoutHours.find(t => t.index === index);
+        if (taskWithoutHours) {
+          // Get the hours from the hoursArray
+          const hoursIndex = tasksWithoutHours.indexOf(taskWithoutHours);
+          return {
+            ...item,
+            hours: hoursArray[hoursIndex]
+          };
+        }
+        // Keep existing hours for tasks that already had them
+        return item;
+      });
       // Auto-save the changes
       autoSave(updated, regularNotes);
       return updated;
     });
     
+    const preservedCount = tasksWithHours.length;
+    const splitCount = tasksWithoutHours.length;
     toast.success('Hours distributed evenly across subtasks', {
-      description: `${totalBudget}h split among ${numTasks} subtasks`,
+      description: `${remainingHours.toFixed(1)}h split among ${splitCount} subtask${splitCount > 1 ? 's' : ''}${preservedCount > 0 ? ` (${preservedCount} with existing hours preserved)` : ''}`,
       duration: 2000
     });
   };
