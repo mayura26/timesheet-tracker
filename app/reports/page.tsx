@@ -249,6 +249,102 @@ export default function ReportsPage() {
     }).format(hours * rate);
   };
 
+  // Calculate predicted earnings for the rest of the month
+  const calculatePredictedEarnings = (report: MonthlyReport | null) => {
+    if (!report) return { 
+      predictedHours: 0, 
+      predictedEarnings: 0, 
+      remainingWeekdays: 0, 
+      avgWeekdayHours: 0,
+      totalProjectedHours: 0,
+      totalProjectedEarnings: 0,
+      loggedHours: 0,
+      loggedEarnings: 0
+    };
+    
+    const hourlyRate = 115;
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    const currentDay = today.getDate();
+    
+    const loggedHours = report.totalHours;
+    const loggedEarnings = loggedHours * hourlyRate;
+    
+    // Only calculate if viewing current month
+    if (selectedYear !== currentYear || selectedMonth !== currentMonth) {
+      return { 
+        predictedHours: 0, 
+        predictedEarnings: 0, 
+        remainingWeekdays: 0, 
+        avgWeekdayHours: 0,
+        totalProjectedHours: loggedHours,
+        totalProjectedEarnings: loggedEarnings,
+        loggedHours,
+        loggedEarnings
+      };
+    }
+    
+    // Calculate average hours per weekday (Mon-Fri only) from days with hours logged
+    let weekdayHours = 0;
+    let weekdayDays = 0;
+    
+    Object.entries(report.dailyBreakdown).forEach(([date, hours]) => {
+      if (hours > 0) {
+        const [year, month, day] = date.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day);
+        const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+        
+        // Only count weekdays (Monday = 1, Friday = 5)
+        if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+          weekdayHours += hours;
+          weekdayDays += 1;
+        }
+      }
+    });
+    
+    const avgWeekdayHours = weekdayDays > 0 ? weekdayHours / weekdayDays : 0;
+    
+    // Count remaining weekdays (Mon-Fri) from today to end of month that don't have hours logged yet
+    const lastDayOfMonth = getDaysInMonth(selectedYear, selectedMonth);
+    let remainingWeekdays = 0;
+    
+    for (let day = currentDay; day <= lastDayOfMonth; day++) {
+      const dateObj = new Date(selectedYear, selectedMonth - 1, day);
+      const dayOfWeek = dateObj.getDay();
+      
+      // Only count weekdays (Monday = 1, Friday = 5) that don't have hours logged
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        // Format date string to check if hours are already logged
+        const dateString = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+        const hoursLogged = report.dailyBreakdown[dateString] || 0;
+        
+        // Only count if no hours are logged for this day
+        if (hoursLogged === 0) {
+          remainingWeekdays += 1;
+        }
+      }
+    }
+    
+    const predictedHours = avgWeekdayHours * remainingWeekdays;
+    const predictedEarnings = predictedHours * hourlyRate;
+    
+    // Total projected for the month (logged + predicted)
+    const totalProjectedHours = loggedHours + predictedHours;
+    const totalProjectedEarnings = totalProjectedHours * hourlyRate;
+    
+    return { 
+      predictedHours, 
+      predictedEarnings, 
+      remainingWeekdays, 
+      avgWeekdayHours,
+      totalProjectedHours,
+      totalProjectedEarnings,
+      loggedHours,
+      loggedEarnings
+    };
+  };
+
   // Create summary view of tasks grouped by project + description
   const getSummaryTasks = () => {
     if (!monthlyStatement) return [];
@@ -382,40 +478,60 @@ export default function ReportsPage() {
           </TabsList>
 
           <TabsContent value="monthly" className="space-y-8">
-            {report && (
-              <>
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-card rounded-lg border border-border p-6">
-                    <h3 className="text-sm font-medium text-muted-foreground">Total Hours</h3>
-                    <p className="text-3xl font-bold text-foreground mt-2">
-                      {report.totalHours.toFixed(1)}
-                    </p>
+            {report && (() => {
+              const prediction = calculatePredictedEarnings(report);
+              return (
+                <>
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="bg-card rounded-lg border border-border p-6">
+                      <h3 className="text-sm font-medium text-muted-foreground">Total Hours</h3>
+                      <p className="text-3xl font-bold text-foreground mt-2">
+                        {report.totalHours.toFixed(1)}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-card rounded-lg border border-border p-6">
+                      <h3 className="text-sm font-medium text-muted-foreground">Estimated Earnings</h3>
+                      <p className="text-3xl font-bold text-foreground mt-2">
+                        {formatCurrency(report.totalHours)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">@ $115/hour</p>
+                    </div>
+                    
+                    <div className="bg-card rounded-lg border border-border p-6">
+                      <h3 className="text-sm font-medium text-muted-foreground">Average Daily</h3>
+                      <p className="text-3xl font-bold text-foreground mt-2">
+                        {(() => {
+                          const daysWithHours = Object.values(report.dailyBreakdown).filter(hours => hours > 0).length;
+                          return daysWithHours > 0 
+                            ? (report.totalHours / daysWithHours).toFixed(1)
+                            : '0.0';
+                        })()}h
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {Object.values(report.dailyBreakdown).filter(hours => hours > 0).length} days with hours logged
+                      </p>
+                    </div>
+                    
+                    <div className="bg-card rounded-lg border border-border p-6">
+                      <h3 className="text-sm font-medium text-muted-foreground">Projected Monthly Total</h3>
+                      <p className="text-3xl font-bold text-foreground mt-2">
+                        {formatCurrency(prediction.totalProjectedHours)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {prediction.remainingWeekdays === 0 ? (
+                          'Month complete'
+                        ) : (
+                          <>
+                            {prediction.loggedHours.toFixed(1)}h logged + {prediction.predictedHours.toFixed(1)}h predicted
+                            <br />
+                            ({prediction.avgWeekdayHours.toFixed(1)}h/day × {prediction.remainingWeekdays} weekdays)
+                          </>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  
-                  <div className="bg-card rounded-lg border border-border p-6">
-                    <h3 className="text-sm font-medium text-muted-foreground">Estimated Earnings</h3>
-                    <p className="text-3xl font-bold text-foreground mt-2">
-                      {formatCurrency(report.totalHours)}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">@ $115/hour</p>
-                  </div>
-                  
-                  <div className="bg-card rounded-lg border border-border p-6">
-                    <h3 className="text-sm font-medium text-muted-foreground">Average Daily</h3>
-                    <p className="text-3xl font-bold text-foreground mt-2">
-                      {(() => {
-                        const daysWithHours = Object.values(report.dailyBreakdown).filter(hours => hours > 0).length;
-                        return daysWithHours > 0 
-                          ? (report.totalHours / daysWithHours).toFixed(1)
-                          : '0.0';
-                      })()}h
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {Object.values(report.dailyBreakdown).filter(hours => hours > 0).length} days with hours logged
-                    </p>
-                  </div>
-                </div>
 
                 {/* Project Breakdown */}
                 <div className="bg-card rounded-lg border border-border p-6">
@@ -584,8 +700,9 @@ export default function ReportsPage() {
                     </p>
                   )}
                 </div>
-              </>
-            )}
+                </>
+              );
+            })()}
           </TabsContent>
 
           <TabsContent value="weekly" className="space-y-8">
