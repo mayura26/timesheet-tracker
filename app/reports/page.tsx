@@ -375,7 +375,15 @@ export default function ReportsPage() {
       }
     });
     
-    return Array.from(taskMap.values()).sort((a, b) => b.totalHours - a.totalHours);
+    return Array.from(taskMap.values()).sort((a, b) => {
+      // First sort by project alphabetically
+      const projectCompare = a.project.localeCompare(b.project);
+      if (projectCompare !== 0) {
+        return projectCompare;
+      }
+      // Then sort by description alphabetically
+      return a.description.localeCompare(b.description);
+    });
   };
 
   // Toggle expanded state for a task
