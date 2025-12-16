@@ -989,12 +989,76 @@ interface AddTaskFormProps {
 }
 
 function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTaskFormProps) {
+  const [taskType, setTaskType] = useState<'new' | 'recent'>('new');
+  const [recentTasks, setRecentTasks] = useState<Task[]>([]);
+  const [isLoadingRecentTasks, setIsLoadingRecentTasks] = useState(false);
   const [formData, setFormData] = useState({
     project: projects.length > 0 ? projects[0].name : '',
     description: '',
     budgetedHours: 0,
-    notes: ''
+    notes: '',
+    selectedTaskId: ''
   });
+
+  // Fetch tasks with budget remaining
+  useEffect(() => {
+    const fetchRecentTasks = async () => {
+      if (taskType === 'recent') {
+        setIsLoadingRecentTasks(true);
+        try {
+          const response = await fetch('/api/tasks');
+          if (response.ok) {
+            const allTasks: Task[] = await response.json();
+            // Filter tasks that have budget remaining (hours_remaining > 0)
+            const tasksWithBudget = allTasks.filter(
+              task => (task.hours_remaining ?? 0) > 0
+            );
+            // Sort by project name, then description
+            tasksWithBudget.sort((a, b) => {
+              if (a.project_name !== b.project_name) {
+                return a.project_name.localeCompare(b.project_name);
+              }
+              return a.description.localeCompare(b.description);
+            });
+            setRecentTasks(tasksWithBudget);
+          }
+        } catch (error) {
+          console.error('Error fetching recent tasks:', error);
+        } finally {
+          setIsLoadingRecentTasks(false);
+        }
+      }
+    };
+
+    fetchRecentTasks();
+  }, [taskType]);
+
+  // Handle recent task selection
+  const handleRecentTaskSelect = (taskId: string) => {
+    const selectedTask = recentTasks.find(task => task.id === taskId);
+    if (selectedTask) {
+      setFormData({
+        project: selectedTask.project_name,
+        description: selectedTask.description,
+        budgetedHours: selectedTask.budgeted_hours || 0,
+        notes: selectedTask.notes || '',
+        selectedTaskId: taskId
+      });
+    }
+  };
+
+  // Reset form when switching task type
+  useEffect(() => {
+    if (taskType === 'new') {
+      setFormData({
+        project: projects.length > 0 ? projects[0].name : '',
+        description: '',
+        budgetedHours: 0,
+        notes: '',
+        selectedTaskId: ''
+      });
+    }
+  }, [taskType, projects]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1005,54 +1069,140 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
 
   return (
     <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-card rounded-lg p-6 w-full max-w-md mx-4">
-        <h3 className="text-lg font-semibold mb-4">Add New Task</h3>
+      <div className="bg-card rounded-lg p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+        <h3 className="text-lg font-semibold mb-4">Add Task</h3>
         
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Task Type Selection */}
           <div>
-            <label className="block text-sm font-medium mb-1">Project</label>
-            <select
-              value={formData.project}
-              onChange={(e) => setFormData({ ...formData, project: e.target.value })}
-              className="w-full p-2 border border-border rounded-md bg-background"
-              required
-            >
-              {projects.map(project => (
-                <option key={project.id} value={project.name}>{project.name}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-1">Task Description</label>
-            <div className="space-y-2">
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full p-2 border border-border rounded-md bg-background h-20 resize-none"
-                placeholder="What task will you be working on?"
-                required
-              />
-              {recentDescriptions.length > 0 && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Recent descriptions:</p>
-                  <div className="flex flex-wrap gap-1">
-                    {recentDescriptions.map((desc, index) => (
-                      <button
-                        key={index}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, description: desc })}
-                        className="text-xs px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
-                      >
-                        {desc.length > 30 ? `${desc.substring(0, 30)}...` : desc}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <label className="block text-sm font-medium mb-2">Task Type</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="taskType"
+                  value="new"
+                  checked={taskType === 'new'}
+                  onChange={(e) => setTaskType(e.target.value as 'new' | 'recent')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">New Task</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="taskType"
+                  value="recent"
+                  checked={taskType === 'recent'}
+                  onChange={(e) => setTaskType(e.target.value as 'new' | 'recent')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Recent Task</span>
+              </label>
             </div>
           </div>
 
+          {/* Recent Task Dropdown */}
+          {taskType === 'recent' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Select Recent Task</label>
+              {isLoadingRecentTasks ? (
+                <div className="w-full p-2 border border-border rounded-md bg-background text-sm text-muted-foreground">
+                  Loading tasks...
+                </div>
+              ) : recentTasks.length === 0 ? (
+                <div className="w-full p-2 border border-border rounded-md bg-background text-sm text-muted-foreground">
+                  No tasks with budget remaining found
+                </div>
+              ) : (
+                <select
+                  value={formData.selectedTaskId}
+                  onChange={(e) => handleRecentTaskSelect(e.target.value)}
+                  className="w-full p-2 border border-border rounded-md bg-background"
+                  required={taskType === 'recent'}
+                >
+                  <option value="">-- Select a task --</option>
+                  {recentTasks.map(task => (
+                    <option key={task.id} value={task.id}>
+                      {task.project_name} - {task.description} 
+                      {task.hours_remaining !== undefined && ` (${task.hours_remaining.toFixed(1)}h remaining)`}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Project Selection (only for new tasks or when editing) */}
+          {taskType === 'new' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Project</label>
+              <select
+                value={formData.project}
+                onChange={(e) => setFormData({ ...formData, project: e.target.value })}
+                className="w-full p-2 border border-border rounded-md bg-background"
+                required={taskType === 'new'}
+              >
+                {projects.map(project => (
+                  <option key={project.id} value={project.name}>{project.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Project Display (read-only for recent tasks) */}
+          {taskType === 'recent' && formData.selectedTaskId && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Project</label>
+              <input
+                type="text"
+                value={formData.project}
+                readOnly
+                className="w-full p-2 border border-border rounded-md bg-muted text-muted-foreground cursor-not-allowed"
+              />
+            </div>
+          )}
+          
+          {/* Task Description */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Task Description</label>
+            {taskType === 'new' ? (
+              <div className="space-y-2">
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full p-2 border border-border rounded-md bg-background h-20 resize-none"
+                  placeholder="What task will you be working on?"
+                  required={taskType === 'new'}
+                />
+                {recentDescriptions.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Recent descriptions:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {recentDescriptions.map((desc, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, description: desc })}
+                          className="text-xs px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
+                        >
+                          {desc.length > 30 ? `${desc.substring(0, 30)}...` : desc}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <textarea
+                value={formData.description}
+                readOnly
+                className="w-full p-2 border border-border rounded-md bg-muted text-muted-foreground h-20 resize-none cursor-not-allowed"
+              />
+            )}
+          </div>
+
+          {/* Budgeted Hours */}
           <div>
             <label className="block text-sm font-medium mb-1">Budgeted Hours (Optional)</label>
             <input
@@ -1065,10 +1215,13 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
               placeholder="Enter budgeted hours"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Set a budget to track hours remaining for this task
+              {taskType === 'recent' && formData.selectedTaskId
+                ? `Current budget: ${formData.budgetedHours.toFixed(1)}h`
+                : 'Set a budget to track hours remaining for this task'}
             </p>
           </div>
 
+          {/* Notes */}
           <div>
             <label className="block text-sm font-medium mb-1">Notes (Optional)</label>
             <textarea
