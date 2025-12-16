@@ -25,10 +25,10 @@ async function runMigration() {
 
   try {
     // Read the migration file
-    const migrationPath = join(__dirname, '..', 'migrations', '003_add_tasks_table.sql');
+    const migrationPath = join(__dirname, '..', 'migrations', '004_add_is_closed_to_tasks.sql');
     const migrationSQL = readFileSync(migrationPath, 'utf8');
 
-    console.log('Running migration: 003_add_tasks_table.sql');
+    console.log('Running migration: 004_add_is_closed_to_tasks.sql');
     console.log('----------------------------------------');
 
     // Split by semicolon and execute each statement
@@ -46,11 +46,11 @@ async function runMigration() {
     console.log('----------------------------------------');
     console.log('🎉 Migration completed successfully!');
     
-    // Verify the tasks table was created
+    // Verify the is_closed column was added
     const result = await client.execute(`
-      SELECT COUNT(*) as count FROM tasks
+      SELECT COUNT(*) as count FROM tasks WHERE is_closed = 0
     `);
-    console.log(`📊 Tasks table now has ${result.rows[0].count} entries`);
+    console.log(`📊 Found ${result.rows[0].count} open tasks`);
 
   } catch (error) {
     console.error('❌ Error running migration:', error);

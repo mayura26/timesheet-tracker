@@ -66,4 +66,5 @@ export interface Task {
   hours_billed?: number; // Calculated field
   hours_remaining?: number; // Calculated field
   completion_percentage?: number; // Calculated field - percentage of subtasks completed
+  is_closed?: boolean; // Whether the task is closed
 }

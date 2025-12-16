@@ -1009,9 +1009,9 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
           const response = await fetch('/api/tasks');
           if (response.ok) {
             const allTasks: Task[] = await response.json();
-            // Filter tasks that have budget remaining (hours_remaining > 0)
+            // Filter tasks that have budget remaining (hours_remaining > 0) and are not closed
             const tasksWithBudget = allTasks.filter(
-              task => (task.hours_remaining ?? 0) > 0
+              task => (task.hours_remaining ?? 0) > 0 && !task.is_closed
             );
             // Sort by project name, then description
             tasksWithBudget.sort((a, b) => {

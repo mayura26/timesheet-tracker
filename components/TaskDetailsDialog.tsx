@@ -262,6 +262,70 @@ export default function TaskDetailsDialog({
     loadTaskDetails();
   }, [loadTaskDetails]);
 
+  const handleCloseTask = async () => {
+    if (!task) return;
+
+    try {
+      setSaving(true);
+      // Serialize checklist and regular notes to preserve them
+      const serializedNotes = serializeNotes(checklist, regularNotes.split('\n').filter(line => line.trim()));
+      
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_closed: true,
+          budgeted_hours: formData.budgeted_hours,
+          notes: serializedNotes
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to close task');
+
+      const updatedTask = await response.json();
+      setTask(updatedTask);
+      toast.success('Task closed successfully');
+      onUpdate();
+    } catch (error) {
+      console.error('Error closing task:', error);
+      toast.error('Failed to close task');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReopenTask = async () => {
+    if (!task) return;
+
+    try {
+      setSaving(true);
+      // Serialize checklist and regular notes to preserve them
+      const serializedNotes = serializeNotes(checklist, regularNotes.split('\n').filter(line => line.trim()));
+      
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_closed: false,
+          budgeted_hours: formData.budgeted_hours,
+          notes: serializedNotes
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to reopen task');
+
+      const updatedTask = await response.json();
+      setTask(updatedTask);
+      toast.success('Task reopened successfully');
+      onUpdate();
+    } catch (error) {
+      console.error('Error reopening task:', error);
+      toast.error('Failed to reopen task');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!task) return;
 
@@ -984,30 +1048,61 @@ export default function TaskDetailsDialog({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 justify-end pt-4 border-t border-border">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={saving}
-                className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {saving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
-                    Saving...
-                  </>
+            <div className="flex gap-3 justify-between items-center pt-4 border-t border-border">
+              <div>
+                {task.is_closed ? (
+                  <button
+                    type="button"
+                    onClick={handleReopenTask}
+                    disabled={saving}
+                    className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50 text-sm flex items-center gap-2"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 3l18 18M9 9l6 6M15 9l-6 6"></path>
+                      <circle cx="12" cy="12" r="10"></circle>
+                    </svg>
+                    Reopen Task
+                  </button>
                 ) : (
-                  'Save Budget & Description'
+                  <button
+                    type="button"
+                    onClick={handleCloseTask}
+                    disabled={saving}
+                    className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50 text-sm flex items-center gap-2"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                    Close Task
+                  </button>
                 )}
-              </button>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={saving}
+                  className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {saving ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Budget & Description'
+                  )}
+                </button>
+              </div>
             </div>
             <p className="text-xs text-center text-muted-foreground mt-2">
               Checklist and notes auto-save as you type

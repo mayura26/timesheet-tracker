@@ -81,7 +81,8 @@ export async function GET(request: NextRequest) {
           updated_at: row.updated_at as string,
           hours_billed: hoursBilled,
           hours_remaining: hoursRemaining,
-          completion_percentage: completionPercentage
+          completion_percentage: completionPercentage,
+          is_closed: (row.is_closed as number) === 1
         };
       })
     );
@@ -144,7 +145,8 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
       hours_billed: hoursBilled,
       hours_remaining: budgetedHoursValue - hoursBilled,
-      completion_percentage: completionPercentage
+      completion_percentage: completionPercentage,
+      is_closed: false
     };
 
     return NextResponse.json(newTask, { status: 201 });

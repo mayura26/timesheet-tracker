@@ -71,7 +71,8 @@ export async function GET(
       updated_at: row.updated_at as string,
       hours_billed: hoursBilled,
       hours_remaining: budgetedHours - hoursBilled,
-      completion_percentage: completionPercentage
+      completion_percentage: completionPercentage,
+      is_closed: (row.is_closed as number) === 1
     };
 
     return NextResponse.json(task);
@@ -92,7 +93,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { description, budgeted_hours, notes, update_description } = body;
+    const { description, budgeted_hours, notes, update_description, is_closed } = body;
 
     // Get the current task
     const currentTaskResult = await db.execute({
@@ -148,8 +149,8 @@ export async function PUT(
       // Create new task record with updated ID
       await db.execute({
         sql: `
-          INSERT INTO tasks (id, project_name, description, budgeted_hours, notes, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          INSERT INTO tasks (id, project_name, description, budgeted_hours, notes, is_closed, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         `,
         args: [
           newId,
@@ -157,6 +158,7 @@ export async function PUT(
           newDescription,
           budgeted_hours ?? (currentTask.budgeted_hours as number),
           notes ?? (currentTask.notes as string) ?? '',
+          (currentTask.is_closed as number) ?? 0,
           currentTask.created_at as string
         ]
       });
@@ -190,20 +192,33 @@ export async function PUT(
         updated_at: row.updated_at as string,
         hours_billed: hoursBilled,
         hours_remaining: budgetedHoursValue - hoursBilled,
-        completion_percentage: completionPercentage
+        completion_percentage: completionPercentage,
+        is_closed: (row.is_closed as number) === 1
       };
 
       return NextResponse.json(updatedTask);
     } else {
-      // Just update budget and notes without changing description
-      await db.execute({
-        sql: `
-          UPDATE tasks 
-          SET budgeted_hours = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `,
-        args: [budgeted_hours ?? 0, notes ?? '', id]
-      });
+      // Just update budget, notes, and is_closed without changing description
+      const isClosedValue = is_closed !== undefined ? (is_closed ? 1 : 0) : undefined;
+      if (isClosedValue !== undefined) {
+        await db.execute({
+          sql: `
+            UPDATE tasks 
+            SET budgeted_hours = ?, notes = ?, is_closed = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `,
+          args: [budgeted_hours ?? 0, notes ?? '', isClosedValue, id]
+        });
+      } else {
+        await db.execute({
+          sql: `
+            UPDATE tasks 
+            SET budgeted_hours = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `,
+          args: [budgeted_hours ?? 0, notes ?? '', id]
+        });
+      }
 
       // Fetch the updated task with billed hours
       const result = await db.execute({
@@ -241,7 +256,8 @@ export async function PUT(
         updated_at: row.updated_at as string,
         hours_billed: hoursBilled,
         hours_remaining: budgetedHoursValue - hoursBilled,
-        completion_percentage: completionPercentage
+        completion_percentage: completionPercentage,
+        is_closed: (row.is_closed as number) === 1
       };
 
       return NextResponse.json(updatedTask);
