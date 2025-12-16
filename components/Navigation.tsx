@@ -12,6 +12,7 @@ export default function Navigation() {
   const navItems = [
     { href: '/', label: 'Timesheet', icon: '📊' },
     { href: '/admin', label: 'Projects', icon: '⚙️' },
+    { href: '/tasks', label: 'Tasks', icon: '📋' },
     { href: '/reports', label: 'Reports', icon: '📈' },
   ];
 
