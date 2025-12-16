@@ -231,10 +231,10 @@ export default function TimesheetMatrix() {
 
   const loadRecentDescriptions = async () => {
     try {
-      // Get descriptions from the last 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const startDate = `${thirtyDaysAgo.getFullYear()}-${(thirtyDaysAgo.getMonth() + 1).toString().padStart(2, '0')}-${thirtyDaysAgo.getDate().toString().padStart(2, '0')}`;
+      // Get descriptions from the last 2 weeks (14 days)
+      const twoWeeksAgo = new Date();
+      twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+      const startDate = `${twoWeeksAgo.getFullYear()}-${(twoWeeksAgo.getMonth() + 1).toString().padStart(2, '0')}-${twoWeeksAgo.getDate().toString().padStart(2, '0')}`;
       const today = new Date();
       const endDate = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
       
