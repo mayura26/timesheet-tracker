@@ -97,6 +97,7 @@ export default function TimesheetMatrix() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingWeek, setIsLoadingWeek] = useState(false);
   const [selectedTask, setSelectedTask] = useState<{ id: string; project: string; description: string } | null>(null);
+  const [holidays, setHolidays] = useState<Set<string>>(new Set());
   
   // Track pending updates to prevent race conditions
   const pendingUpdatesRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
@@ -143,6 +144,17 @@ export default function TimesheetMatrix() {
       // Calculate end date safely by adding 6 days
       const endDateObj = new Date(startYear, startMonth - 1, startDay + 6);
       const endDate = `${endDateObj.getFullYear()}-${(endDateObj.getMonth() + 1).toString().padStart(2, '0')}-${endDateObj.getDate().toString().padStart(2, '0')}`;
+      
+      // Load holidays for the week
+      try {
+        const holidaysResponse = await fetch(`/api/holidays?startDate=${startDate}&endDate=${endDate}`);
+        if (holidaysResponse.ok) {
+          const holidayDates = await holidaysResponse.json();
+          setHolidays(new Set(holidayDates));
+        }
+      } catch (error) {
+        console.error('Error loading holidays:', error);
+      }
       
       const response = await fetch(`/api/entries?startDate=${startDate}&endDate=${endDate}`);
       const entries: TimeEntry[] = await response.json();
@@ -792,26 +804,47 @@ export default function TimesheetMatrix() {
             {/* Day Headers */}
             {currentWeek.days.map((day) => {
               const isTodayDay = isToday(day.date);
+              const isHoliday = holidays.has(day.date);
               return (
                 <div 
                   key={day.date} 
                   className={`p-3 sm:p-4 font-semibold text-center border-r border-border last:border-r-0 ${
-                    isTodayDay 
+                    isHoliday
+                      ? 'bg-red-50 dark:bg-red-950/20 border-2 border-red-200 dark:border-red-800'
+                      : isTodayDay 
                       ? 'bg-primary/20 border-2 border-primary ring-2 ring-primary/30' 
                       : 'bg-muted'
                   }`}
                 >
-                  <div className={`text-xs sm:text-sm ${isTodayDay ? 'text-primary font-bold' : ''}`}>
+                  <div className={`text-xs sm:text-sm ${
+                    isHoliday 
+                      ? 'text-red-800 dark:text-red-300 font-bold' 
+                      : isTodayDay 
+                      ? 'text-primary font-bold' 
+                      : ''
+                  }`}>
                     <span className="sm:hidden">{getDayName(day.date).substring(0, 3)}</span>
                     <span className="hidden sm:inline">{getDayName(day.date)}</span>
-                    {isTodayDay && (
+                    {isHoliday && (
+                      <>
+                        <span className="sm:hidden"> (H)</span>
+                        <span className="hidden sm:inline"> (Holiday)</span>
+                      </>
+                    )}
+                    {!isHoliday && isTodayDay && (
                       <>
                         <span className="sm:hidden"> (T)</span>
                         <span className="hidden sm:inline"> (Today)</span>
                       </>
                     )}
                   </div>
-                  <div className={`text-xs ${isTodayDay ? 'text-primary font-semibold' : 'text-muted-foreground'}`}>
+                  <div className={`text-xs ${
+                    isHoliday 
+                      ? 'text-red-600 dark:text-red-400 font-semibold' 
+                      : isTodayDay 
+                      ? 'text-primary font-semibold' 
+                      : 'text-muted-foreground'
+                  }`}>
                     {formatDate(day.date)}
                   </div>
                 </div>
@@ -866,11 +899,16 @@ export default function TimesheetMatrix() {
               {/* Hours Inputs for each day */}
               {currentWeek.days.map((day) => {
                 const isTodayDay = isToday(day.date);
+                const isHoliday = holidays.has(day.date);
                 return (
                   <div 
                     key={`${task.id}-${day.date}`} 
                     className={`p-1 sm:p-2 border-r border-t border-border last:border-r-0 min-w-[80px] sm:min-w-0 ${
-                      isTodayDay ? 'bg-primary/5' : 'bg-background'
+                      isHoliday 
+                        ? 'bg-red-50/50 dark:bg-red-950/10' 
+                        : isTodayDay 
+                        ? 'bg-primary/5' 
+                        : 'bg-background'
                     }`}
                   >
                     <input
@@ -880,15 +918,20 @@ export default function TimesheetMatrix() {
                       max="24"
                       value={task.hours[day.date] || ''}
                       onChange={(e) => {
+                        if (isHoliday) return; // Prevent changes on holidays
                         const hours = parseFloat(e.target.value) || 0;
                         updateTaskHours(task.id, day.date, hours);
                       }}
+                      disabled={isHoliday}
                       className={`w-full p-1 text-center text-xs sm:text-sm border rounded focus:outline-none ${
-                        isTodayDay 
+                        isHoliday
+                          ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 cursor-not-allowed opacity-75'
+                          : isTodayDay 
                           ? 'border-primary/40 bg-background/95 focus:border-primary focus:ring-1 focus:ring-primary/20' 
                           : 'border-border bg-background focus:border-primary'
                       }`}
-                      placeholder="0"
+                      placeholder={isHoliday ? "H" : "0"}
+                      title={isHoliday ? "Holiday - Time entry disabled" : ""}
                     />
                   </div>
                 );
@@ -930,15 +973,24 @@ export default function TimesheetMatrix() {
                 </div>
                 {currentWeek.days.map((day) => {
                   const isTodayDay = isToday(day.date);
+                  const isHoliday = holidays.has(day.date);
                   return (
                     <div 
                       key={`total-${day.date}`} 
                       className={`p-3 sm:p-4 text-center border-r border-border border-t-2 border-t-border last:border-r-0 ${
-                        isTodayDay ? 'bg-primary/15' : 'bg-primary/5'
+                        isHoliday
+                          ? 'bg-red-50 dark:bg-red-950/20'
+                          : isTodayDay 
+                          ? 'bg-primary/15' 
+                          : 'bg-primary/5'
                       }`}
                     >
-                      <span className="text-xs sm:text-sm font-bold text-primary">
-                        {dailyTotals[day.date] > 0 ? `${dailyTotals[day.date].toFixed(1)}h` : '-'}
+                      <span className={`text-xs sm:text-sm font-bold ${
+                        isHoliday 
+                          ? 'text-red-600 dark:text-red-400' 
+                          : 'text-primary'
+                      }`}>
+                        {isHoliday ? 'Holiday' : dailyTotals[day.date] > 0 ? `${dailyTotals[day.date].toFixed(1)}h` : '-'}
                       </span>
                     </div>
                   );
