@@ -90,7 +90,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const result = await db.execute({
+    await db.execute({
       sql: 'DELETE FROM holidays WHERE date = ?',
       args: [date]
     });
