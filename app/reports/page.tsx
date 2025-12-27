@@ -25,6 +25,12 @@ export default function ReportsPage() {
   const [isSummaryView, setIsSummaryView] = useState(true);
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [selectedTask, setSelectedTask] = useState<{ id: string; project: string; description: string } | null>(null);
+  const [holidays, setHolidays] = useState<Set<string>>(new Set());
+
+  // Get number of days in a month (month is 1-based)
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month, 0).getDate();
+  };
 
   const loadProjects = async () => {
     try {
@@ -33,6 +39,63 @@ export default function ReportsPage() {
       setProjects(data);
     } catch (error) {
       console.error('Error loading projects:', error);
+    }
+  };
+
+  const loadHolidays = useCallback(async () => {
+    try {
+      const startDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-01`;
+      const lastDayOfMonth = getDaysInMonth(selectedYear, selectedMonth);
+      const endDate = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${lastDayOfMonth.toString().padStart(2, '0')}`;
+      
+      const response = await fetch(`/api/holidays?startDate=${startDate}&endDate=${endDate}`);
+      const holidayDates = await response.json();
+      setHolidays(new Set(holidayDates));
+    } catch (error) {
+      console.error('Error loading holidays:', error);
+    }
+  }, [selectedYear, selectedMonth]);
+
+  const toggleHoliday = async (date: string) => {
+    const isHoliday = holidays.has(date);
+    
+    // Optimistically update UI
+    setHolidays(prev => {
+      const newSet = new Set(prev);
+      if (isHoliday) {
+        newSet.delete(date);
+      } else {
+        newSet.add(date);
+      }
+      return newSet;
+    });
+
+    try {
+      if (isHoliday) {
+        // Remove holiday
+        await fetch(`/api/holidays?date=${date}`, {
+          method: 'DELETE'
+        });
+      } else {
+        // Add holiday
+        await fetch('/api/holidays', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date })
+        });
+      }
+    } catch (error) {
+      console.error('Error toggling holiday:', error);
+      // Revert on error
+      setHolidays(prev => {
+        const newSet = new Set(prev);
+        if (isHoliday) {
+          newSet.add(date);
+        } else {
+          newSet.delete(date);
+        }
+        return newSet;
+      });
     }
   };
 
@@ -208,13 +271,14 @@ export default function ReportsPage() {
     if (projects.length > 0) {
       if (activeTab === 'monthly') {
         loadMonthlyReport();
+        loadHolidays();
       } else if (activeTab === 'weekly') {
         loadWeeklySummary();
       } else if (activeTab === 'statement') {
         loadMonthlyStatement();
       }
     }
-  }, [selectedMonth, selectedYear, projects, activeTab, loadMonthlyReport, loadWeeklySummary, loadMonthlyStatement]);
+  }, [selectedMonth, selectedYear, projects, activeTab, loadMonthlyReport, loadWeeklySummary, loadMonthlyStatement, loadHolidays]);
 
   const getProjectColor = (projectName: string) => {
     const project = projects.find(p => p.name === projectName);
@@ -285,12 +349,12 @@ export default function ReportsPage() {
       };
     }
     
-    // Calculate average hours per weekday (Mon-Fri only) from days with hours logged
+    // Calculate average hours per weekday (Mon-Fri only) from days with hours logged, excluding holidays
     let weekdayHours = 0;
     let weekdayDays = 0;
     
     Object.entries(report.dailyBreakdown).forEach(([date, hours]) => {
-      if (hours > 0) {
+      if (hours > 0 && !holidays.has(date)) {
         const [year, month, day] = date.split('-').map(Number);
         const dateObj = new Date(year, month - 1, day);
         const dayOfWeek = dateObj.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
@@ -305,7 +369,7 @@ export default function ReportsPage() {
     
     const avgWeekdayHours = weekdayDays > 0 ? weekdayHours / weekdayDays : 0;
     
-    // Count remaining weekdays (Mon-Fri) from today to end of month that don't have hours logged yet
+    // Count remaining weekdays (Mon-Fri) from today to end of month that don't have hours logged yet, excluding holidays
     const lastDayOfMonth = getDaysInMonth(selectedYear, selectedMonth);
     let remainingWeekdays = 0;
     
@@ -313,14 +377,15 @@ export default function ReportsPage() {
       const dateObj = new Date(selectedYear, selectedMonth - 1, day);
       const dayOfWeek = dateObj.getDay();
       
-      // Only count weekdays (Monday = 1, Friday = 5) that don't have hours logged
+      // Only count weekdays (Monday = 1, Friday = 5) that don't have hours logged and are not holidays
       if (dayOfWeek >= 1 && dayOfWeek <= 5) {
         // Format date string to check if hours are already logged
         const dateString = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
         const hoursLogged = report.dailyBreakdown[dateString] || 0;
+        const isHoliday = holidays.has(dateString);
         
-        // Only count if no hours are logged for this day
-        if (hoursLogged === 0) {
+        // Only count if no hours are logged for this day and it's not a holiday
+        if (hoursLogged === 0 && !isHoliday) {
           remainingWeekdays += 1;
         }
       }
@@ -415,11 +480,6 @@ export default function ReportsPage() {
     }
   };
 
-  // Get number of days in a month (month is 1-based)
-  const getDaysInMonth = (year: number, month: number) => {
-    return new Date(year, month, 0).getDate();
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -511,14 +571,16 @@ export default function ReportsPage() {
                       <h3 className="text-sm font-medium text-muted-foreground">Average Daily</h3>
                       <p className="text-3xl font-bold text-foreground mt-2">
                         {(() => {
-                          const daysWithHours = Object.values(report.dailyBreakdown).filter(hours => hours > 0).length;
+                          const daysWithHours = Object.entries(report.dailyBreakdown)
+                            .filter(([date, hours]) => hours > 0 && !holidays.has(date))
+                            .length;
                           return daysWithHours > 0 
                             ? (report.totalHours / daysWithHours).toFixed(1)
                             : '0.0';
                         })()}h
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {Object.values(report.dailyBreakdown).filter(hours => hours > 0).length} days with hours logged
+                        {Object.entries(report.dailyBreakdown).filter(([date, hours]) => hours > 0 && !holidays.has(date)).length} days with hours logged
                       </p>
                     </div>
                     
@@ -630,6 +692,7 @@ export default function ReportsPage() {
                           for (let day = 1; day <= lastDay; day++) {
                             const date = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                             const hours = report.dailyBreakdown[date] || 0;
+                            const isHoliday = holidays.has(date);
                             weekHours += hours;
                             
                             const today = new Date();
@@ -644,8 +707,11 @@ export default function ReportsPage() {
                             currentWeek.push(
                               <div
                                 key={day}
-                                className={`p-3 rounded-lg border text-center transition-all ${
-                                  isToday
+                                onClick={() => toggleHoliday(date)}
+                                className={`p-3 rounded-lg border text-center transition-all cursor-pointer hover:opacity-80 ${
+                                  isHoliday
+                                    ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/20 dark:border-red-800 dark:text-red-300'
+                                    : isToday
                                     ? 'bg-primary/10 border-primary text-primary ring-2 ring-primary/20'
                                     : hours > 0
                                     ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950/20 dark:border-green-800 dark:text-green-300'
@@ -653,11 +719,15 @@ export default function ReportsPage() {
                                     ? 'bg-muted/50 border-border/50 text-muted-foreground/60'
                                     : 'bg-muted border-border text-muted-foreground'
                                 }`}
+                                title={isHoliday ? 'Click to unmark as holiday' : 'Click to mark as holiday'}
                               >
                                 <div className="text-sm font-medium">{day}</div>
                                 <div className="text-xs mt-1 font-semibold">
                                   {hours > 0 ? `${hours.toFixed(1)}h` : '—'}
                                 </div>
+                                {isHoliday && (
+                                  <div className="text-xs mt-0.5 text-red-600 dark:text-red-400">Holiday</div>
+                                )}
                               </div>
                             );
                             

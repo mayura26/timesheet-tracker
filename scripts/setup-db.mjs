@@ -75,6 +75,21 @@ async function setupDatabase() {
     `);
     console.log('✅ Default projects inserted successfully');
 
+    console.log('Creating holidays table...');
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS holidays (
+        date TEXT PRIMARY KEY,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ Holidays table created successfully');
+
+    console.log('Creating holidays index...');
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_holidays_date ON holidays(date)
+    `);
+    console.log('✅ Holidays index created successfully');
+
     console.log('🎉 Database setup completed successfully!');
   } catch (error) {
     console.error('❌ Error setting up database:', error);
