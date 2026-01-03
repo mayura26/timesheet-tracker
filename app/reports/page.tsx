@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { MonthlyReport, Project, MonthlyStatement, TaskEntry } from '@/lib/schema';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TaskDetailsDialog from '@/components/TaskDetailsDialog';
+import InvoiceDialog from '@/components/InvoiceDialog';
+import { DEFAULT_HOURLY_RATE } from '@/lib/invoice-generator';
 
 interface WeeklySummary {
   weekStart: string;
@@ -26,6 +28,7 @@ export default function ReportsPage() {
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [selectedTask, setSelectedTask] = useState<{ id: string; project: string; description: string } | null>(null);
   const [holidays, setHolidays] = useState<Set<string>>(new Set());
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
 
   // Get number of days in a month (month is 1-based)
   const getDaysInMonth = (year: number, month: number) => {
@@ -232,7 +235,7 @@ export default function ReportsPage() {
       // Calculate project summary
       const projectSummary: { [projectName: string]: { hours: number; earnings: number } } = {};
       let totalHours = 0;
-      const hourlyRate = 115;
+      const hourlyRate = DEFAULT_HOURLY_RATE;
 
       tasks.forEach(task => {
         if (!projectSummary[task.project]) {
@@ -306,10 +309,10 @@ export default function ReportsPage() {
     return colorMap[baseColor] || '#60a5fa';
   };
 
-  const formatCurrency = (hours: number, rate: number = 115) => {
-    return new Intl.NumberFormat('en-US', {
+  const formatCurrency = (hours: number, rate: number = DEFAULT_HOURLY_RATE) => {
+    return new Intl.NumberFormat('en-CA', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'CAD'
     }).format(hours * rate);
   };
 
@@ -326,7 +329,7 @@ export default function ReportsPage() {
       loggedEarnings: 0
     };
     
-    const hourlyRate = 115;
+    const hourlyRate = DEFAULT_HOURLY_RATE;
     const today = new Date();
     const currentYear = today.getFullYear();
     const currentMonth = today.getMonth() + 1;
@@ -564,7 +567,7 @@ export default function ReportsPage() {
                       <p className="text-3xl font-bold text-foreground mt-2">
                         {formatCurrency(report.totalHours)}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">@ $115/hour</p>
+                      <p className="text-xs text-muted-foreground mt-1">@ {formatCurrency(1, DEFAULT_HOURLY_RATE)}/hour</p>
                     </div>
                     
                     <div className="bg-card rounded-lg border border-border p-6">
@@ -930,6 +933,15 @@ export default function ReportsPage() {
           <TabsContent value="statement" className="space-y-8">
             {monthlyStatement && (
               <>
+                {/* Generate Invoice Button */}
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowInvoiceDialog(true)}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors font-medium"
+                  >
+                    Generate Invoice
+                  </button>
+                </div>
 
                 {/* Project Summary */}
             <div className="bg-card rounded-lg border border-border p-6">
@@ -1188,6 +1200,14 @@ export default function ReportsPage() {
           description={selectedTask.description}
           onClose={handleTaskDialogClose}
           onUpdate={handleTaskDialogClose}
+        />
+      )}
+
+      {/* Invoice Dialog */}
+      {showInvoiceDialog && monthlyStatement && (
+        <InvoiceDialog
+          monthlyStatement={monthlyStatement}
+          onClose={() => setShowInvoiceDialog(false)}
         />
       )}
     </div>
