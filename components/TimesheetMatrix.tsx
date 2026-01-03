@@ -296,7 +296,7 @@ export default function TimesheetMatrix() {
     };
   };
 
-  const addTask = async (project: string, description: string, budgetedHours?: number, notes?: string) => {
+  const addTask = async (project: string, description: string, budgetedHours?: number, notes?: string, syncToPlanMyDay?: boolean) => {
     try {
       const taskKey = `${project}|${description}`;
       
@@ -306,9 +306,9 @@ export default function TimesheetMatrix() {
         return;
       }
 
-      // Create task in database if budgeted hours or notes are provided
-      if (budgetedHours || notes) {
-        await fetch('/api/tasks', {
+      // Create task in database if budgeted hours, notes are provided, or if we need to sync
+      if (budgetedHours || notes || syncToPlanMyDay) {
+        const response = await fetch('/api/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -318,6 +318,40 @@ export default function TimesheetMatrix() {
             notes: notes || ''
           })
         });
+
+        if (!response.ok) {
+          throw new Error('Failed to create task in database');
+        }
+
+        // Sync to Plan My Day if requested
+        if (syncToPlanMyDay) {
+          try {
+            const syncResponse = await fetch(`/api/tasks/${encodeURIComponent(taskKey)}/sync`, {
+              method: 'POST',
+            });
+
+            if (syncResponse.ok) {
+              toast.success('Task created and synced to Plan My Day', {
+                description: description,
+              });
+            } else {
+              const errorData = await syncResponse.json().catch(() => ({ error: 'Unknown error' }));
+              console.error('Sync error:', errorData.error);
+              toast.success('Task added successfully', {
+                description: 'Sync to Plan My Day failed',
+              });
+            }
+          } catch (syncError) {
+            console.error('Error syncing task:', syncError);
+            toast.success('Task added successfully', {
+              description: 'Sync to Plan My Day failed',
+            });
+          }
+        } else {
+          toast.success('Task added successfully');
+        }
+      } else {
+        toast.success('Task added successfully');
       }
 
       const newTask: TaskRow = {
@@ -342,7 +376,6 @@ export default function TimesheetMatrix() {
 
       setShowAddTask(false);
       loadRecentDescriptions();
-      toast.success('Task added successfully');
     } catch (error) {
       console.error('Error adding task:', error);
       toast.error('Failed to add task. Please try again.');
@@ -1014,7 +1047,7 @@ export default function TimesheetMatrix() {
         <AddTaskForm
           projects={projects}
           recentDescriptions={recentDescriptions}
-          onSave={(project, description, budgetedHours, notes) => addTask(project, description, budgetedHours, notes)}
+          onSave={(project, description, budgetedHours, notes, syncToPlanMyDay) => addTask(project, description, budgetedHours, notes, syncToPlanMyDay)}
           onCancel={() => setShowAddTask(false)}
         />
       )}
@@ -1036,7 +1069,7 @@ export default function TimesheetMatrix() {
 interface AddTaskFormProps {
   projects: Project[];
   recentDescriptions: string[];
-  onSave: (project: string, description: string, budgetedHours?: number, notes?: string) => void;
+  onSave: (project: string, description: string, budgetedHours?: number, notes?: string, syncToPlanMyDay?: boolean) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -1044,12 +1077,14 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
   const [taskType, setTaskType] = useState<'new' | 'recent'>('new');
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [isLoadingRecentTasks, setIsLoadingRecentTasks] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     project: projects.length > 0 ? projects[0].name : '',
     description: '',
     budgetedHours: 0,
     notes: '',
-    selectedTaskId: ''
+    selectedTaskId: '',
+    syncToPlanMyDay: true
   });
 
   // Fetch tasks with budget remaining
@@ -1094,7 +1129,8 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
         description: selectedTask.description,
         budgetedHours: selectedTask.budgeted_hours || 0,
         notes: selectedTask.notes || '',
-        selectedTaskId: taskId
+        selectedTaskId: taskId,
+        syncToPlanMyDay: formData.syncToPlanMyDay
       });
     }
   };
@@ -1107,15 +1143,21 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
         description: '',
         budgetedHours: 0,
         notes: '',
-        selectedTaskId: ''
+        selectedTaskId: '',
+        syncToPlanMyDay: true
       });
     }
   }, [taskType, projects]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.project && formData.description.trim()) {
-      onSave(formData.project, formData.description.trim(), formData.budgetedHours, formData.notes.trim());
+    if (formData.project && formData.description.trim() && !isSubmitting) {
+      setIsSubmitting(true);
+      try {
+        await onSave(formData.project, formData.description.trim(), formData.budgetedHours, formData.notes.trim(), formData.syncToPlanMyDay);
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -1283,6 +1325,20 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
               placeholder="Add any notes or additional information..."
             />
           </div>
+
+          {/* Sync to Plan My Day */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="sync-to-plan-my-day"
+              checked={formData.syncToPlanMyDay}
+              onChange={(e) => setFormData({ ...formData, syncToPlanMyDay: e.target.checked })}
+              className="w-4 h-4 cursor-pointer"
+            />
+            <label htmlFor="sync-to-plan-my-day" className="text-sm text-foreground cursor-pointer">
+              Sync to Plan My Day
+            </label>
+          </div>
           
           <div className="flex gap-2 justify-end">
             <button
@@ -1294,9 +1350,13 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Add Task
+              {isSubmitting && (
+                <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
+              )}
+              {isSubmitting ? 'Adding...' : 'Add Task'}
             </button>
           </div>
         </form>

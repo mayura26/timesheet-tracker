@@ -3,12 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Task, Project } from '@/lib/schema';
 import TaskDetailsDialog from '@/components/TaskDetailsDialog';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<{ id: string; project: string; description: string } | null>(null);
+  const [syncingTasks, setSyncingTasks] = useState<Set<string>>(new Set());
 
   // Filter states
   const [filterBudgetLeft, setFilterBudgetLeft] = useState(false);
@@ -124,6 +127,44 @@ export default function TasksPage() {
   };
 
   const hasActiveFilters = filterBudgetLeft || filterClosedStatus !== 'all' || filterProject || searchDescription || filterHasBudget || filterNoBudget;
+
+  const handleSyncTask = async (taskId: string, taskDescription: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent opening task dialog when clicking sync button
+    
+    // Prevent multiple simultaneous syncs for the same task
+    if (syncingTasks.has(taskId)) {
+      return;
+    }
+
+    try {
+      setSyncingTasks(prev => new Set(prev).add(taskId));
+
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/sync`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to sync task');
+      }
+
+      toast.success('Task synced to Plan My Day', {
+        description: taskDescription,
+      });
+    } catch (error) {
+      console.error('Error syncing task:', error);
+      toast.error('Failed to sync task', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      });
+    } finally {
+      setSyncingTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(taskId);
+        return newSet;
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -267,6 +308,7 @@ export default function TasksPage() {
                       <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">Remaining</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Status</th>
                       <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Progress</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -326,6 +368,20 @@ export default function TasksPage() {
                           ) : (
                             <span className="text-xs text-muted-foreground">—</span>
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => handleSyncTask(task.id, task.description, e)}
+                            disabled={syncingTasks.has(task.id)}
+                            className="whitespace-nowrap flex items-center gap-2"
+                          >
+                            {syncingTasks.has(task.id) && (
+                              <div className="w-3 h-3 border-2 border-foreground border-t-transparent rounded-full animate-spin"></div>
+                            )}
+                            {syncingTasks.has(task.id) ? 'Syncing...' : 'Sync'}
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -400,6 +456,20 @@ export default function TasksPage() {
                         </span>
                       </div>
                     )}
+                    <div className="mt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => handleSyncTask(task.id, task.description, e)}
+                        disabled={syncingTasks.has(task.id)}
+                        className="w-full flex items-center justify-center gap-2"
+                      >
+                        {syncingTasks.has(task.id) && (
+                          <div className="w-3 h-3 border-2 border-foreground border-t-transparent rounded-full animate-spin"></div>
+                        )}
+                        {syncingTasks.has(task.id) ? 'Syncing...' : 'Sync to Plan My Day'}
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
