@@ -1154,7 +1154,15 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
     if (formData.project && formData.description.trim() && !isSubmitting) {
       setIsSubmitting(true);
       try {
-        await onSave(formData.project, formData.description.trim(), formData.budgetedHours, formData.notes.trim(), formData.syncToPlanMyDay);
+        // For existing tasks, don't pass budget/notes/sync values since they're already configured
+        const isExistingTask = taskType === 'recent' && formData.selectedTaskId;
+        await onSave(
+          formData.project,
+          formData.description.trim(),
+          isExistingTask ? undefined : formData.budgetedHours,
+          isExistingTask ? '' : formData.notes.trim(),
+          isExistingTask ? false : formData.syncToPlanMyDay
+        );
       } finally {
         setIsSubmitting(false);
       }
@@ -1296,49 +1304,53 @@ function AddTaskForm({ projects, recentDescriptions, onSave, onCancel }: AddTask
             )}
           </div>
 
-          {/* Budgeted Hours */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Budgeted Hours (Optional)</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
-              value={formData.budgetedHours || ''}
-              onChange={(e) => setFormData({ ...formData, budgetedHours: parseFloat(e.target.value) || 0 })}
-              className="w-full p-2 border border-border rounded-md bg-background"
-              placeholder="Enter budgeted hours"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              {taskType === 'recent' && formData.selectedTaskId
-                ? `Current budget: ${formData.budgetedHours.toFixed(1)}h`
-                : 'Set a budget to track hours remaining for this task'}
-            </p>
-          </div>
+          {/* Budgeted Hours - Only show for new tasks or when no existing task is selected */}
+          {(taskType === 'new' || (taskType === 'recent' && !formData.selectedTaskId)) && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Budgeted Hours (Optional)</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={formData.budgetedHours || ''}
+                onChange={(e) => setFormData({ ...formData, budgetedHours: parseFloat(e.target.value) || 0 })}
+                className="w-full p-2 border border-border rounded-md bg-background"
+                placeholder="Enter budgeted hours"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Set a budget to track hours remaining for this task
+              </p>
+            </div>
+          )}
 
-          {/* Notes */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Notes (Optional)</label>
-            <textarea
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full p-2 border border-border rounded-md bg-background h-20 resize-none"
-              placeholder="Add any notes or additional information..."
-            />
-          </div>
+          {/* Notes - Only show for new tasks or when no existing task is selected */}
+          {(taskType === 'new' || (taskType === 'recent' && !formData.selectedTaskId)) && (
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes (Optional)</label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className="w-full p-2 border border-border rounded-md bg-background h-20 resize-none"
+                placeholder="Add any notes or additional information..."
+              />
+            </div>
+          )}
 
-          {/* Sync to Plan My Day */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="sync-to-plan-my-day"
-              checked={formData.syncToPlanMyDay}
-              onChange={(e) => setFormData({ ...formData, syncToPlanMyDay: e.target.checked })}
-              className="w-4 h-4 cursor-pointer"
-            />
-            <label htmlFor="sync-to-plan-my-day" className="text-sm text-foreground cursor-pointer">
-              Sync to Plan My Day
-            </label>
-          </div>
+          {/* Sync to Plan My Day - Only show for new tasks or when no existing task is selected */}
+          {(taskType === 'new' || (taskType === 'recent' && !formData.selectedTaskId)) && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="sync-to-plan-my-day"
+                checked={formData.syncToPlanMyDay}
+                onChange={(e) => setFormData({ ...formData, syncToPlanMyDay: e.target.checked })}
+                className="w-4 h-4 cursor-pointer"
+              />
+              <label htmlFor="sync-to-plan-my-day" className="text-sm text-foreground cursor-pointer">
+                Sync to Plan My Day
+              </label>
+            </div>
+          )}
           
           <div className="flex gap-2 justify-end">
             <button
